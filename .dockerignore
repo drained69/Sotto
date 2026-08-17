@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 contracts/target
+test-results
+playwright-report
 dist
 node_modules
 *.log

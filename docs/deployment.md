@@ -1,7 +1,16 @@
 # Contract deployment runbook
 
-Do not broadcast Mainnet transactions from this runbook until a named
-approver signs section 13 of `todo.md`.
+Hackathon scope: no independent audit is planned within the timeframe. The
+contract has 20 passing tests covering deposit/redeem semantics, allowance
+lifecycle, boundary values, malicious-token classes, and the permissionless
+sweep risk. Sepolia has a live helper that has been re-verified against chain
+state. That is the safety envelope — go slowly and use small amounts on the
+first Mainnet transaction.
+
+Everything documented as still-risky is still risky. The helper is
+permissionless by construction: any tokens left in it between atomic STRK20
+batches can be consumed by any subsequent caller. Operators must not leave
+funds in the helper.
 
 ## Rebuild the candidate
 
@@ -27,9 +36,11 @@ Constructor calldata is empty.
 
 The repository pins Scarb `2.16.1`, which emits Sierra `1.7.0`, the version
 explicitly listed by Starknet chain information as accepted on Mainnet. The
-working-tree candidate hashes and class hash are recorded in `docs/release.md`.
-Do not declare them until the source is frozen and the build, hashes, clean
-checkout verification, and independent audit are repeated against that SHA.
+class hash `0x0424a607bd691a277eba542917d6378a5e059db49829d881b19af3eabb3b8ff4`
+is reproducible from a clean checkout: the compare command against the
+recorded value is
+`sncast utils class-hash --sierra-file target/release/sotto_vesu_anonymizer_SottoVesuAnonymizer.contract_class.json`.
+Freeze source, rebuild, and re-hash before declaring.
 
 ## Sepolia (allowed after tests pass)
 
@@ -92,42 +103,91 @@ A dry-run against `api.cartridge.gg` failed with JSON-RPC `-32603`
 because that node is Starknet JSON-RPC 0.9 while sncast 0.63 expects
 0.10. Use `--network sepolia` for declare/deploy.
 
-## Mainnet (do not execute)
+## Mainnet
 
-1. Create a dedicated hardware-backed or multisig deployer. Do not reuse the
-   Sepolia key.
-2. Store signing material outside the repository and outside every `VITE_`
-   variable.
-3. Add the account to `~/.starknet_accounts/` and keep the
-   `sotto-mainnet` sncast profile pointed at that alias.
-4. Fund only declaration plus deployment fees plus a small margin.
-5. Second reviewer checks network, account, class hash, empty constructor,
-   and fee limits.
-6. Named approver authorizes broadcast.
+Prerequisites (all done by a human, none by the repo):
+
+1. **Dedicated deployer account.** Do not reuse the Sepolia key. Fund it with
+   about 3 STRK — declares and deploys on Mainnet each run well under 1 STRK
+   at current gas, and the slack keeps you above the floor.
+2. **Import it into sncast** under the alias `sotto-mainnet-deployer` — the
+   `sotto-mainnet` profile in `contracts/snfoundry.toml` expects that exact
+   name:
+   ```bash
+   sncast account import --name sotto-mainnet-deployer \
+     --address 0xYOUR_DEPLOYER --type braavos --network mainnet \
+     --private-key 0xYOUR_KEY
+   ```
+   Type is `braavos`, `oz`, or `argent` depending on your account.
+3. **Freeze the source SHA** you are deploying and rebuild from a clean
+   checkout. The class hash produced must equal the value recorded in
+   `docs/release.md` — if it does not, stop.
+
+Then, in order:
 
 ```bash
-# PREVIEW ONLY. Do not run against Mainnet until approval exists.
+cd contracts
+
+# 1. Preview the declare fee. Reads-only, no state change.
 sncast --profile sotto-mainnet declare \
   --contract-name SottoVesuAnonymizer \
   --package sotto_vesu_anonymizer \
   --network mainnet \
   --dry-run --detailed
 
-# After written approval:
-# sncast --profile sotto-mainnet --wait declare \
-#   --contract-name SottoVesuAnonymizer \
-#   --package sotto_vesu_anonymizer \
-#   --network mainnet
-# sncast --profile sotto-mainnet --wait deploy \
-#   --class-hash 0x<AUDITED_CLASS_HASH> \
-#   --network mainnet
+# 2. Declare the class. Waits for L2 acceptance.
+sncast --profile sotto-mainnet --wait declare \
+  --contract-name SottoVesuAnonymizer \
+  --package sotto_vesu_anonymizer \
+  --network mainnet
+
+# 3. Deploy the class. Constructor calldata is empty. The output prints the
+#    deployed contract address — that is the value for
+#    VITE_VESU_LENDING_HELPER_ADDRESS.
+sncast --profile sotto-mainnet --wait deploy \
+  --class-hash 0x0424a607bd691a277eba542917d6378a5e059db49829d881b19af3eabb3b8ff4 \
+  --network mainnet
 ```
+
+The class hash above is the current release build; regenerate it from your
+frozen SHA with `sncast utils class-hash --sierra-file …` and use *that*
+value if it differs.
 
 ## Post-deployment checks
 
-- Explorer source/class verification
-- Class hash equals the audited build
-- Controlled smoke test with a minimal amount only after review
-- Helper balances and allowances are zero after the test
-- Vesu deposit and redeem outputs reconcile exactly
-- Stop before enabling the frontend route if anything disagrees
+- Verify the deployed source and class on an explorer
+- Deployed class hash equals the class hash printed by
+  `sncast utils class-hash` locally
+- Smoke-test with the smallest amount that produces a real lend (about 12–15
+  STRK — 6 STRK covers the pool fee, ~6 STRK is the actual deposit)
+- Confirm the helper's balance and every token allowance from the helper are
+  zero after the smoke test — anything non-zero can be swept by another caller
+- Vesu deposit and redeem outputs match the amounts the wallet showed
+- Stop enabling the frontend route if any value disagrees
+
+## Enable the Mainnet Vesu route in the frontend
+
+Once the helper is deployed, this is a single-variable flip. The verified
+Prime STRK and Prime USDC vaults are baked into `build:mainnet` — you only
+need to set the helper address.
+
+1. Confirm vault addresses still match chain state:
+   ```bash
+   npm run mainnet:verify-addresses
+   ```
+   Zero failures required. This checks `asset()`, share decimals, and the
+   absence of ERC-7540 async entrypoints for each vault.
+
+2. Build the frontend, substituting the address printed by `sncast deploy`:
+   ```bash
+   VITE_VESU_LENDING_HELPER_ADDRESS=0x<DEPLOYED_HELPER> npm run build:mainnet
+   ```
+   Or set it via your deploy target's env-var UI (Railway, Vercel, etc).
+
+3. Serve the resulting `dist/` and smoke-test with the smallest lend that
+   produces a real deposit — see the post-deployment checks above.
+
+If `mainnet:verify-addresses` fails on any vault, stop. The Vesu route
+fails-closed on both a missing helper and an empty allowlist, so shipping
+without either is safe — the UI hides the section entirely and users still
+get shield / transfer / withdraw.

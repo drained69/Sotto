@@ -12,7 +12,10 @@
     "sepolia:verify-addresses": "node scripts/sepolia-verify-addresses.mjs",
     "dev:sepolia": "VITE_STRK20_NETWORK=sepolia VITE_SEPOLIA_STRK_ADDRESS=0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d VITE_SEPOLIA_USDC_ADDRESS=0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343 VITE_VESU_LENDING_HELPER_ADDRESS=0x03ef9a499a3be674f6b2af553adf2ab1d2d5fe130002e4e09113f5cfd1adc297 VITE_VESU_VAULTS={\"vaults\":[]} vite",
     "build:sepolia": "tsc -b && VITE_STRK20_NETWORK=sepolia VITE_SEPOLIA_STRK_ADDRESS=0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d VITE_SEPOLIA_USDC_ADDRESS=0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343 VITE_VESU_LENDING_HELPER_ADDRESS=0x03ef9a499a3be674f6b2af553adf2ab1d2d5fe130002e4e09113f5cfd1adc297 VITE_VESU_VAULTS={\"vaults\":[]} vite build",
-    "check-registration": "node scripts/check-registration.mjs"
+    "dev:mainnet": "VITE_STRK20_NETWORK=mainnet VITE_VESU_VAULTS='{\"vaults\":[{\"label\":\"Prime\",\"underlying\":\"STRK\",\"vTokenAddress\":\"0x06d6d2bf905dd199c78f2e421521d8473042737be9f47904e7578536c10f279d\",\"vTokenDecimals\":18},{\"label\":\"Prime\",\"underlying\":\"USDC\",\"vTokenAddress\":\"0x00387e8ddbb1ab36ca08874d9abc702ef4872ad600dcf76b7f240b71d7bc4e65\",\"vTokenDecimals\":18}]}' vite",
+    "build:mainnet": "tsc -b && VITE_STRK20_NETWORK=mainnet VITE_VESU_VAULTS='{\"vaults\":[{\"label\":\"Prime\",\"underlying\":\"STRK\",\"vTokenAddress\":\"0x06d6d2bf905dd199c78f2e421521d8473042737be9f47904e7578536c10f279d\",\"vTokenDecimals\":18},{\"label\":\"Prime\",\"underlying\":\"USDC\",\"vTokenAddress\":\"0x00387e8ddbb1ab36ca08874d9abc702ef4872ad600dcf76b7f240b71d7bc4e65\",\"vTokenDecimals\":18}]}' vite build",
+    "check-registration": "node scripts/check-registration.mjs",
+    "mainnet:verify-addresses": "node scripts/mainnet-verify-addresses.mjs"
   },
   "dependencies": {
     "@starknet-io/get-starknet-discovery": "6.0.2",

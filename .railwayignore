@@ -1,0 +1,10 @@
+.git/
+.env
+.env.*
+!.env.example
+contracts/target/
+dist/
+node_modules/
+test-results/
+playwright-report/
+*.log

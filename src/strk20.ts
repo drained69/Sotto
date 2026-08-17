@@ -22,6 +22,40 @@ export const TOKENS = {
 
 export type TokenSymbol = keyof typeof TOKENS;
 
+/**
+ * The STRK20 privacy pool. Read-only here: the wallet owns every write to it.
+ *
+ * Sotto needs the address only to read `get_fee_amount`, which the wallet does not expose. Verified
+ * on chain 2026-08-17 — Mainnet still requires the second reviewer noted in
+ * `docs/mainnet-addresses.md`.
+ */
+export const STRK20_POOL = strk20Network === "sepolia"
+  ? "0x0254a6b2997ef52e9f830ce1f543f6b29768295e8d17e2267d672c552cfe0d91"
+  : "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
+
+/** The pool's fee token. Fees are denominated in the network fee token, STRK. */
+export const FEE_TOKEN_SYMBOL = "STRK";
+
+type CallCapableProvider = { callContract(call: { contractAddress: string; entrypoint: string; calldata: string[] }): Promise<string[]> };
+
+/**
+ * Reads the pool's flat per-transaction fee.
+ *
+ * This is charged on top of the amount moved, on every STRK20 transaction — 2 STRK on Sepolia and
+ * 6 STRK on Mainnet when last read. It is read live rather than hardcoded because the pool exposes
+ * `set_fee_amount` to its admin, so a pinned constant would silently go stale.
+ *
+ * A plain RPC call, not a wallet call: it raises no approval prompt.
+ */
+export async function getPoolFee(provider: CallCapableProvider): Promise<bigint> {
+  const [fee] = await provider.callContract({
+    contractAddress: STRK20_POOL,
+    entrypoint: "get_fee_amount",
+    calldata: [],
+  });
+  return num.toBigInt(fee);
+}
+
 export type VesuVault = {
   id: string;
   label: string;

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://strk20.starknet.io/hackathon/strk20.schema.json",
+  "name": "Sotto",
+  "one_liner": "Private yield on Starknet. Capital works across live DeFi through anonymized helper contracts — positions public, ownership yours alone.",
+  "demo_url": "",
+  "demo_video": "",
+  "transactions": [],
+  "contracts": [
+    "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+    "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb"
+  ]
+}
