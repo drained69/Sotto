@@ -1,0 +1,21 @@
+[package]
+name = "sotto_vesu_anonymizer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+privacy.workspace = true
+
+[dev-dependencies]
+snforge_std = "0.63.0"
+
+[scripts]
+test = "snforge test"
+
+[lib]
+
+[[target.starknet-contract]]
+sierra = true
+casm = true

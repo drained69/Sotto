@@ -1,0 +1,1 @@
+{"version":1,"contracts":[{"id":"gmk271hkcbros","package_name":"sotto_vesu_anonymizer","contract_name":"SottoVesuAnonymizer","module_path":"sotto_vesu_anonymizer::sotto_vesu_anonymizer::SottoVesuAnonymizer","artifacts":{"sierra":"sotto_vesu_anonymizer_SottoVesuAnonymizer.contract_class.json","casm":"sotto_vesu_anonymizer_SottoVesuAnonymizer.compiled_contract_class.json"}}]}
