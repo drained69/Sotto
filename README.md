@@ -206,7 +206,7 @@ The Ethereum, Base, and Arbitrum options represent planned source-chain routes t
 | Asset | Mainnet configuration | Decimals |
 | --- | --- | --- |
 | STRK | Built-in Starknet Mainnet address | 18 |
-| USDC | Built-in Starknet Mainnet address | 6 |
+| USDC | Circle native USDC on Starknet Mainnet | 6 |
 
 Sepolia token addresses must be provided explicitly. Mainnet addresses are never reused as testnet defaults.
 
@@ -313,7 +313,7 @@ This behavior prevents partially configured routes from appearing actionable in 
 - `@starknet-io/types-js` STRK20 action types
 - Starknet Wallet Standard discovery packages
 - Starknet Wallet API types
-- Cairo 2.17 contract workspace
+- Scarb/Cairo 2.16.1 contract workspace (Sierra 1.7.0), pinned in `.tool-versions`
 - OpenZeppelin Cairo contracts
 - Starknet Privacy library
 - Lucide React icons
@@ -340,7 +340,10 @@ npm install
 cp .env.example .env.local
 ```
 
-The included public RPC endpoints are suitable for basic development. Use dedicated RPC endpoints for reliable testing and production traffic.
+The included public RPC endpoints are suitable for basic development. Blast
+public Starknet endpoints are retired; the example file uses dRPC for Mainnet
+and Cartridge for Sepolia. Use dedicated RPC endpoints for reliable testing
+and production traffic.
 
 ### Start the development server
 
@@ -370,6 +373,17 @@ npm run preview
 npm run lint
 ```
 
+### Sepolia checks
+
+```bash
+npm test
+npm run sepolia:verify-addresses
+npm run dev:sepolia      # official Sepolia tokens, helper set, vaults empty
+npm run build:sepolia
+```
+
+Address review: `docs/sepolia-addresses.md`. Live wallet campaign: `docs/sepolia-e2e.md`.
+
 ## Configuration
 
 All frontend environment variables are embedded into the browser bundle by Vite. Never place private keys, signing material, paymaster credentials, manager keys, or other secrets in variables prefixed with `VITE_`.
@@ -395,22 +409,26 @@ VITE_VESU_LENDING_HELPER_ADDRESS=0x...
 VITE_VESU_VAULTS={"vaults":[{"id":"vesu-usdc","label":"Vesu USDC","underlying":"USDC","vTokenAddress":"0x..."}]}
 ```
 
-Example Sepolia configuration:
+Example Sepolia configuration (reviewed 2026-08-17; see `docs/sepolia-addresses.md`):
 
 ```dotenv
 VITE_STRK20_NETWORK=sepolia
 VITE_STARKNET_SEPOLIA_RPC_URL=https://your-sepolia-rpc.example
-VITE_SEPOLIA_STRK_ADDRESS=0x...
-VITE_SEPOLIA_USDC_ADDRESS=0x...
-VITE_VESU_LENDING_HELPER_ADDRESS=0x...
+VITE_SEPOLIA_STRK_ADDRESS=0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
+VITE_SEPOLIA_USDC_ADDRESS=0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343
+VITE_VESU_LENDING_HELPER_ADDRESS=0x03ef9a499a3be674f6b2af553adf2ab1d2d5fe130002e4e09113f5cfd1adc297
 VITE_VESU_VAULTS={"vaults":[]}
 ```
+
+Published Vesu Sepolia vTokens wrap Vesu mock tokens, not official STRK or
+Circle USDC. Leave `VITE_VESU_VAULTS` empty until a vault whose `asset()`
+matches those official tokens is reviewed.
 
 The selected `VITE_STRK20_NETWORK`, token addresses, helper, vaults, and wallet network must all refer to the same Starknet deployment. The frontend detects the connected wallet network independently; operators are responsible for publishing a consistent configuration.
 
 ## Vesu integration
 
-The repository includes `sotto_vesu_anonymizer`, a stateless Cairo helper for converting assets between an underlying ERC-20 and a Vesu vToken during `privacy_invoke`.
+The repository includes `sotto_vesu_anonymizer`, a Cairo helper that holds no user balances and converts assets between an underlying ERC-20 and a Vesu vToken during `privacy_invoke`.
 
 ### Contract behavior
 
@@ -576,7 +594,10 @@ This is expected until the Privacy Bridge contracts and supporting services are 
 │       ├── Scarb.toml
 │       └── src/
 │           ├── lib.cairo
-│           └── sotto_vesu_anonymizer.cairo
+│           ├── sotto_vesu_anonymizer.cairo
+│           ├── test_contracts.cairo
+│           └── tests.cairo
+├── docs/                       Release, address, audit, ops, deploy, and Sepolia review notes
 ├── src/
 │   ├── App.tsx          Product interface and transaction workflows
 │   ├── data.ts          Source-chain presentation data

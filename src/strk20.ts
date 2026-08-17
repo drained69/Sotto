@@ -1,20 +1,21 @@
 import type { WALLET_API } from "@starknet-io/types-js";
 import type { WalletAccountV6 } from "starknet";
 import { num, validateAndParseAddress } from "starknet";
+import { isNotRegistered, isUserRefusal } from "./walletGuards";
 
-const network = import.meta.env.VITE_STRK20_NETWORK ?? "mainnet";
+export const strk20Network = import.meta.env.VITE_STRK20_NETWORK ?? "mainnet";
 
 export const TOKENS = {
   STRK: {
-    address: network === "sepolia"
+    address: strk20Network === "sepolia"
       ? import.meta.env.VITE_SEPOLIA_STRK_ADDRESS ?? ""
       : "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
     decimals: 18,
   },
   USDC: {
-    address: network === "sepolia"
+    address: strk20Network === "sepolia"
       ? import.meta.env.VITE_SEPOLIA_USDC_ADDRESS ?? ""
-      : "0x053c91253bc9682c04929ca02adb0bb3e4230cc62b3d7d5e0d083a16e7d1103a",
+      : "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
     decimals: 6,
   },
 } as const;
@@ -26,7 +27,12 @@ export type VesuVault = {
   label: string;
   underlying: TokenSymbol;
   vTokenAddress: string;
-  /** vToken share decimals. Vesu vTokens mirror their underlying, so this defaults to it. */
+  /**
+   * vToken share decimals. These do NOT track the underlying: verified on Mainnet 2026-08-17,
+   * every Vesu v2 vToken reports 18 even when its asset has 6 (vUSDC shares are 18-decimal over
+   * 6-decimal USDC). There is no safe default here — a wrong value misreports balances by 10^12 —
+   * so this is required per vault and a vault that omits it is dropped.
+   */
   vTokenDecimals: number;
 };
 
@@ -53,12 +59,16 @@ export function getVesuVaults(): VesuVault[] {
     return config.vaults.flatMap((vault, index) => {
       const vTokenAddress = envAddress(vault.vTokenAddress);
       if (!vTokenAddress || !(vault.underlying in TOKENS) || !vault.label) return [];
+      // Fail closed on share decimals: they must be read from the vToken's own `decimals()`
+      // and written into config per vault. Inheriting the underlying's decimals is wrong for
+      // every Vesu v2 vUSDC (18-decimal shares over a 6-decimal asset).
+      if (!Number.isInteger(vault.vTokenDecimals) || vault.vTokenDecimals! < 0 || vault.vTokenDecimals! > 32) return [];
       return [{
         id: vault.id ?? `vesu-${index}`,
         label: vault.label,
         underlying: vault.underlying,
         vTokenAddress,
-        vTokenDecimals: vault.vTokenDecimals ?? TOKENS[vault.underlying].decimals,
+        vTokenDecimals: vault.vTokenDecimals!,
       }];
     });
   } catch {
@@ -71,7 +81,17 @@ export function toBaseUnits(value: string, decimals: number): bigint {
   if (!/^\d+(\.\d+)?$/.test(normalized)) throw new Error("Enter a valid amount.");
   const [whole, fraction = ""] = normalized.split(".");
   if (fraction.length > decimals) throw new Error(`Use at most ${decimals} decimals.`);
-  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0"));
+  const amount = BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0"));
+  if (amount === 0n) throw new Error("Enter an amount greater than zero.");
+  return amount;
+}
+
+function recipientAddress(value: string): string {
+  try {
+    return validateAndParseAddress(value.trim());
+  } catch {
+    throw new Error("Enter a valid Starknet recipient address.");
+  }
 }
 
 export async function shield(
@@ -80,7 +100,7 @@ export async function shield(
   amount: string,
 ) {
   const config = TOKENS[token];
-  if (!config.address) throw new Error(`${token} is not configured for ${network}.`);
+  if (!config.address) throw new Error(`${token} is not configured for ${strk20Network}.`);
   const actions: WALLET_API.STRK20_ACTION[] = [
     { type: "deposit", token: config.address, amount: num.toHex(toBaseUnits(amount, config.decimals)) },
   ];
@@ -94,13 +114,13 @@ export async function withdraw(
   recipient: string,
 ) {
   const config = TOKENS[token];
-  if (!config.address) throw new Error(`${token} is not configured for ${network}.`);
+  if (!config.address) throw new Error(`${token} is not configured for ${strk20Network}.`);
   const actions: WALLET_API.STRK20_ACTION[] = [
     {
       type: "withdraw",
       token: config.address,
       amount: num.toHex(toBaseUnits(amount, config.decimals)),
-      recipient,
+      recipient: recipientAddress(recipient),
     },
   ];
   return wallet.strk20InvokeTransaction(actions);
@@ -113,25 +133,43 @@ export async function privateTransfer(
   recipient: string,
 ) {
   const config = TOKENS[token];
-  if (!config.address) throw new Error(`${token} is not configured for ${network}.`);
-  if (!recipient.trim()) throw new Error("Enter a recipient address.");
+  if (!config.address) throw new Error(`${token} is not configured for ${strk20Network}.`);
   const actions: WALLET_API.STRK20_ACTION[] = [
     {
       type: "transfer",
       token: config.address,
       amount: num.toHex(toBaseUnits(amount, config.decimals)),
-      recipient: recipient.trim(),
+      recipient: recipientAddress(recipient),
     },
   ];
   return wallet.strk20InvokeTransaction(actions);
 }
 
+/**
+ * Reads the account's shielded balances.
+ *
+ * The empty-array form is the wallet-api's "all shielded tokens this wallet holds", and it is the
+ * right default: naming specific addresses asks the wallet about tokens it may not shield on this
+ * network, and a wallet is free to fail that whole request rather than return zeros. Querying
+ * everything also surfaces vToken positions without the vault config having to list them.
+ *
+ * The explicit list is kept only as a fallback for a wallet that rejects the empty form.
+ */
 export async function getShieldedBalances(wallet: WalletAccountV6) {
-  const tokens = [
-    ...Object.values(TOKENS).map((token) => token.address),
-    ...getVesuVaults().map((vault) => vault.vTokenAddress),
-  ].filter(Boolean);
-  return wallet.strk20Balances(tokens);
+  try {
+    return await wallet.strk20Balances([]);
+  } catch (error) {
+    // Every strk20Balances call raises a wallet approval prompt, so only retry when a different
+    // token list could plausibly change the answer. Refusal and missing registration are decisions
+    // about the account, not the query — retrying those just stacks a second prompt on the user.
+    if (isUserRefusal(error) || isNotRegistered(error)) throw error;
+    const tokens = [
+      ...Object.values(TOKENS).map((token) => token.address),
+      ...getVesuVaults().map((vault) => vault.vTokenAddress),
+    ].filter(Boolean);
+    if (!tokens.length) throw error;
+    return await wallet.strk20Balances(tokens);
+  }
 }
 
 export function parseShieldedBalances(raw: unknown): Map<string, bigint> {
@@ -211,7 +249,7 @@ export async function lendToVesu(
 ) {
   if (!vesuHelperAddress) throw new Error("Vesu lending is not configured for this deployment.");
   const underlying = TOKENS[vault.underlying];
-  if (!underlying.address) throw new Error(`${vault.underlying} is not configured for ${network}.`);
+  if (!underlying.address) throw new Error(`${vault.underlying} is not configured for ${strk20Network}.`);
   const actions = buildLendingActions(
     LENDING_DEPOSIT,
     underlying.address,
@@ -237,7 +275,7 @@ export async function unlendFromVesu(
 ) {
   if (!vesuHelperAddress) throw new Error("Vesu lending is not configured for this deployment.");
   const underlying = TOKENS[vault.underlying];
-  if (!underlying.address) throw new Error(`${vault.underlying} is not configured for ${network}.`);
+  if (!underlying.address) throw new Error(`${vault.underlying} is not configured for ${strk20Network}.`);
   const actions = buildLendingActions(
     LENDING_WITHDRAW,
     vault.vTokenAddress,

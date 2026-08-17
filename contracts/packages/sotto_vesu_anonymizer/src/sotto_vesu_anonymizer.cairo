@@ -1,8 +1,10 @@
 //! Sotto's Vesu lending anonymizer.
 //!
 //! This is based on the reference implementation in the Starknet Privacy
-//! repository. It is stateless and intended to be called by the STRK20 pool
-//! through `privacy_invoke` during an atomic private transaction.
+//! repository. It holds no user balances and is intended to be called by the
+//! STRK20 pool through `privacy_invoke` during an atomic private transaction.
+//! The only persistent storage is a reentrancy lock used for the duration of
+//! an invoke.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
@@ -44,6 +46,7 @@ pub mod errors {
     pub const TOKENS_EQUAL: felt252 = 'TOKENS_EQUAL';
     pub const RECEIVED_AMOUNT_OVERFLOW: felt252 = 'RECEIVED_AMOUNT_OVERFLOW';
     pub const ZERO_OUT_AMOUNT: felt252 = 'ZERO_OUT_AMOUNT';
+    pub const REENTRANCY: felt252 = 'REENTRANCY';
 }
 
 #[starknet::contract]
@@ -51,11 +54,16 @@ pub mod SottoVesuAnonymizer {
     use core::num::traits::Zero;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use privacy::objects::OpenNoteDeposit;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
-    use super::{IVTokenDispatcher, IVTokenDispatcherTrait, ISottoVesuAnonymizer, LendingOperation, errors};
+    use super::{
+        ISottoVesuAnonymizer, IVTokenDispatcher, IVTokenDispatcherTrait, LendingOperation, errors,
+    };
 
     #[storage]
-    struct Storage {}
+    struct Storage {
+        locked: bool,
+    }
 
     #[constructor]
     fn constructor(ref self: ContractState) {}
@@ -70,6 +78,9 @@ pub mod SottoVesuAnonymizer {
             amount: u256,
             note_id: felt252,
         ) -> Span<OpenNoteDeposit> {
+            assert(!self.locked.read(), errors::REENTRANCY);
+            self.locked.write(true);
+
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
             assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
@@ -100,6 +111,7 @@ pub mod SottoVesuAnonymizer {
                 .expect(errors::RECEIVED_AMOUNT_OVERFLOW);
             assert(out_amount.is_non_zero(), errors::ZERO_OUT_AMOUNT);
             out_erc20.approve(spender: privacy_addr, amount: out_amount.into());
+            self.locked.write(false);
 
             [OpenNoteDeposit { note_id, token: out_token, amount: out_amount }].span()
         }

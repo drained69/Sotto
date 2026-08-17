@@ -1,0 +1,16 @@
+:{$PORT:3000} {
+    root * /srv
+    encode zstd gzip
+
+    header {
+        Content-Security-Policy "default-src 'self'; connect-src 'self' https://rpc.starknet.lava.build https://api.cartridge.gg wss:; img-src 'self' data: https:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+
+    try_files {path} /index.html
+    file_server
+}

@@ -16,15 +16,19 @@ cd contracts
 scarb build
 ```
 
-The helper is stateless and is intended to be called by the STRK20 pool through
-`privacy_invoke`. It does not accept direct user calls as a substitute for a
-privacy proof. The frontend invokes it through a Wallet API batch containing an
-`OPEN` transfer for the output vToken followed by one `invoke` action.
+The helper holds no user balances and uses a transient reentrancy lock. It is
+intended to be called by the STRK20 pool through `privacy_invoke`. A direct
+call is not a substitute for a privacy proof, but the contract is
+permissionless: leftover tokens sent to it can be consumed by any later
+caller. The frontend invokes it through a Wallet API batch containing a
+`withdraw` that funds the helper, an `OPEN` transfer for the output token, and
+one `invoke` action.
 
-The Vesu interface uses asset-denominated `withdraw`, not share-denominated
-`redeem`: the input amount for a withdrawal operation is the number of assets
-requested from the vault. Review the exact deployed vault ABI before enabling a
-route.
+The Vesu interface uses share-denominated `redeem`, not asset-denominated
+`withdraw`. A withdrawal supplies a vToken share count because that is what a
+shielded note holds. Using `withdraw` would burn `convertToShares(amount)` and
+could strand leftover shares in this stateless helper. Review the exact
+deployed vault ABI before enabling a route.
 
 The helper measures output by balance delta and approves the privacy pool to
 pull the result. Open-note output amounts are public by design, while the open

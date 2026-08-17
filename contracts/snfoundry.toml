@@ -1,5 +1,15 @@
 
 [sncast.sotto-sepolia]
-network = "sepolia"
+url = "https://api.cartridge.gg/x/starknet/sepolia"
 account = "sotto-sepolia-deployer"
+accounts-file = "/Users/uba/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+
+# Non-secret Mainnet profile. Do not add a production account until hardware
+# or multisig control is in place. Signing material must stay outside git.
+[sncast.sotto-mainnet]
+# Verified 2026-08-17: https://starknet.drpc.org answers starknet_chainId but not
+# starknet_call / starknet_blockNumber / starknet_getTransactionReceipt, so declare
+# and deploy would fail against it. Lava serves the full method set.
+url = "https://rpc.starknet.lava.build"
+account = "sotto-mainnet-deployer"
 accounts-file = "/Users/uba/.starknet_accounts/starknet_open_zeppelin_accounts.json"
