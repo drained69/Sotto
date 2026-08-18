@@ -105,6 +105,17 @@ because that node is Starknet JSON-RPC 0.9 while sncast 0.63 expects
 
 ## Mainnet
 
+Recorded Mainnet deployment 2026-08-18:
+
+| Item | Value |
+| --- | --- |
+| Class hash | `0x0424a607bd691a277eba542917d6378a5e059db49829d881b19af3eabb3b8ff4` |
+| Contract | `0x06277c357edf60e9acbbd5a9efaeb8fcb0d0b0daf1f06801ed94d4247a9b1e6a` |
+| Deploy tx | `0x018af3f4d95f6d8064c56738daba6d82ae99d4be6144af8966aeef828ad4c52b` |
+
+The class was already declared when the deployment run began, so no new
+declaration transaction was submitted.
+
 Prerequisites (all done by a human, none by the repo):
 
 1. **Dedicated deployer account.** Do not reuse the Sepolia key. Fund it with
@@ -167,7 +178,7 @@ value if it differs.
 
 ## Enable the Mainnet Vesu route in the frontend
 
-Once the helper is deployed, this is a single-variable flip. The verified
+The helper is deployed, so this is a single-variable flip. The verified
 Prime STRK and Prime USDC vaults are baked into `build:mainnet` — you only
 need to set the helper address.
 
@@ -180,7 +191,7 @@ need to set the helper address.
 
 2. Build the frontend, substituting the address printed by `sncast deploy`:
    ```bash
-   VITE_VESU_LENDING_HELPER_ADDRESS=0x<DEPLOYED_HELPER> npm run build:mainnet
+    VITE_VESU_LENDING_HELPER_ADDRESS=0x06277c357edf60e9acbbd5a9efaeb8fcb0d0b0daf1f06801ed94d4247a9b1e6a npm run build:mainnet
    ```
    Or set it via your deploy target's env-var UI (Railway, Vercel, etc).
 

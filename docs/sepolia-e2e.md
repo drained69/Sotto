@@ -22,7 +22,8 @@ Do not treat this file as a completed live Sepolia campaign.
 ## What was executed here
 
 1. On-chain review of every candidate address against `SN_SEPOLIA`.
-2. Frontend Sepolia values written into `.env.example`.
+2. Frontend Sepolia values written into `.env.sepolia` and the Sepolia
+   block of `.env.example`.
 3. `gateLiveWallet` extracted and unit-tested, including Mainnet-on-Sepolia.
 4. `npm run sepolia:verify-addresses` — class hashes, metadata, helper zeros.
 5. Sepolia production build (`npm run build:sepolia`, bundle
@@ -66,8 +67,9 @@ Use a Ready (or other) wallet on **Starknet Sepolia** that reports Wallet API
 https://starknet-faucet.vercel.app/ and Circle test USDC from
 https://faucet.circle.com/.
 
-1. `cp .env.example .env.local` and keep only the Sepolia block.
-2. `npm run dev` and open `http://localhost:5173`.
+1. `npm run dev:sepolia` (loads `.env.sepolia`), or copy the Sepolia block
+   from `.env.example` into `.env.local` and run `npm run dev`.
+2. Open `http://localhost:5173`.
 3. Connect the Sepolia privacy wallet. Confirm the dashboard says `Sepolia`
    and `STRK20 ready`.
 4. Connect a Mainnet wallet (or switch the same wallet to Mainnet) and submit

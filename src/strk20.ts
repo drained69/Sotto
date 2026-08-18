@@ -36,6 +36,24 @@ export const STRK20_POOL = strk20Network === "sepolia"
 /** The pool's fee token. Fees are denominated in the network fee token, STRK. */
 export const FEE_TOKEN_SYMBOL = "STRK";
 
+/**
+ * Reads an ERC-20 balance in base units.
+ *
+ * Public read, no wallet prompt. Used by the deposit modal so the user can see how much of the
+ * token they can shield BEFORE the wallet raises its confirmation window — otherwise the wallet
+ * dry-run fails with a bare "UNKNOWN_ERROR" and the user cannot tell the failure from a stuck
+ * request. `[low, high]` is the standard u256 return; balances above 2^128 wei do not fit a real
+ * ERC-20 supply and the pattern is used throughout Sotto's ancillary scripts.
+ */
+export async function getPublicBalance(provider: CallCapableProvider, token: string, account: string): Promise<bigint> {
+  const [lo, hi] = await provider.callContract({
+    contractAddress: token,
+    entrypoint: "balance_of",
+    calldata: [account],
+  });
+  return num.toBigInt(lo) | (num.toBigInt(hi ?? 0) << 128n);
+}
+
 type CallCapableProvider = { callContract(call: { contractAddress: string; entrypoint: string; calldata: string[] }): Promise<string[]> };
 
 /**
@@ -56,22 +74,54 @@ export async function getPoolFee(provider: CallCapableProvider): Promise<bigint>
   return num.toBigInt(fee);
 }
 
-export type VesuVault = {
+/**
+ * A yield-bearing ERC-4626 vault the anonymizer helper can drive.
+ *
+ * The name is deliberately generic: the helper contract calls only `IVToken.deposit` and
+ * `IVToken.redeem` — the ERC-4626 sync interface — so it is not tied to Vesu. Any vault verified
+ * as sync-4626 (see `scripts/mainnet-verify-addresses.mjs`) can be added to the allowlist.
+ * Endur's liquid-staking xSTRK, for example, is 4626-compatible and slots into this shape.
+ */
+export type YieldVault = {
   id: string;
+  /** Human name for the protocol group (e.g. "Vesu", "Endur"). Drives UI grouping. */
+  protocol: string;
+  /** Vault variant within that protocol (e.g. "Prime", "Re7 Core", "Liquid staking"). */
   label: string;
+  /**
+   * What kind of yield this vault represents. Cosmetic on the frontend, but load-bearing for the
+   * "across DeFi" claim: three distinct sources of yield (lending spread, staking rewards,
+   * actively-managed rebalancing) is a stronger story than one vault type × many curators.
+   */
+  kind: "lend" | "stake" | "reactor";
   underlying: TokenSymbol;
   vTokenAddress: string;
   /**
-   * vToken share decimals. These do NOT track the underlying: verified on Mainnet 2026-08-17,
-   * every Vesu v2 vToken reports 18 even when its asset has 6 (vUSDC shares are 18-decimal over
-   * 6-decimal USDC). There is no safe default here — a wrong value misreports balances by 10^12 —
-   * so this is required per vault and a vault that omits it is dropped.
+   * vToken share decimals. These do NOT track the underlying: verified on Mainnet, every Vesu v2
+   * vToken reports 18 even when its asset has 6 (vUSDC shares are 18-decimal over 6-decimal USDC).
+   * There is no safe default here — a wrong value misreports balances by 10^12 — so this is
+   * required per vault and a vault that omits it is dropped.
    */
   vTokenDecimals: number;
 };
 
-type VesuEnv = {
-  vaults: Array<Omit<VesuVault, "id" | "vTokenDecimals"> & { id?: string; vTokenDecimals?: number }>;
+/**
+ * Kept as an alias so existing imports do not break during the refactor. New code should use
+ * `YieldVault`.
+ * @deprecated Use YieldVault.
+ */
+export type VesuVault = YieldVault;
+
+type YieldEnv = {
+  vaults: Array<{
+    id?: string;
+    protocol?: string;
+    label?: string;
+    kind?: "lend" | "stake" | "reactor";
+    underlying?: string;
+    vTokenAddress?: string;
+    vTokenDecimals?: number;
+  }>;
 };
 
 function envAddress(value: string | undefined): string | undefined {
@@ -83,24 +133,46 @@ function envAddress(value: string | undefined): string | undefined {
   }
 }
 
+/**
+ * Address of Sotto's deployed ERC-4626 anonymizer helper. The env var is still spelled
+ * `VITE_VESU_LENDING_HELPER_ADDRESS` for compatibility with existing deployments — the *contract*
+ * is generic across ERC-4626 vaults, not Vesu-specific.
+ */
 export const vesuHelperAddress = envAddress(import.meta.env.VITE_VESU_LENDING_HELPER_ADDRESS);
 
-export function getVesuVaults(): VesuVault[] {
-  if (!vesuHelperAddress || !import.meta.env.VITE_VESU_VAULTS) return [];
+/** Alias with a name that matches what the helper actually is. */
+export const yieldHelperAddress = vesuHelperAddress;
+
+/**
+ * Parse the allowlist of vaults the frontend can drive.
+ *
+ * Fail-closed on every field: a malformed entry is dropped rather than degraded. Env var name is
+ * `VITE_YIELD_VAULTS` (new); `VITE_VESU_VAULTS` is still read for backward compatibility.
+ */
+export function getYieldVaults(): YieldVault[] {
+  if (!yieldHelperAddress) return [];
+  const raw = import.meta.env.VITE_YIELD_VAULTS ?? import.meta.env.VITE_VESU_VAULTS;
+  if (!raw) return [];
   try {
-    const config = JSON.parse(import.meta.env.VITE_VESU_VAULTS) as VesuEnv;
+    const config = JSON.parse(raw) as YieldEnv;
     if (!Array.isArray(config.vaults)) return [];
     return config.vaults.flatMap((vault, index) => {
       const vTokenAddress = envAddress(vault.vTokenAddress);
-      if (!vTokenAddress || !(vault.underlying in TOKENS) || !vault.label) return [];
+      if (!vTokenAddress || !vault.label) return [];
+      if (!vault.underlying || !(vault.underlying in TOKENS)) return [];
       // Fail closed on share decimals: they must be read from the vToken's own `decimals()`
       // and written into config per vault. Inheriting the underlying's decimals is wrong for
       // every Vesu v2 vUSDC (18-decimal shares over a 6-decimal asset).
       if (!Number.isInteger(vault.vTokenDecimals) || vault.vTokenDecimals! < 0 || vault.vTokenDecimals! > 32) return [];
+      const kind: YieldVault["kind"] =
+        vault.kind === "stake" || vault.kind === "reactor" ? vault.kind : "lend";
+      const protocol = vault.protocol && typeof vault.protocol === "string" ? vault.protocol : "Vesu";
       return [{
-        id: vault.id ?? `vesu-${index}`,
+        id: vault.id ?? `${protocol.toLowerCase()}-${index}`,
+        protocol,
+        kind,
         label: vault.label,
-        underlying: vault.underlying,
+        underlying: vault.underlying as TokenSymbol,
         vTokenAddress,
         vTokenDecimals: vault.vTokenDecimals!,
       }];
@@ -109,6 +181,9 @@ export function getVesuVaults(): VesuVault[] {
     return [];
   }
 }
+
+/** @deprecated Use getYieldVaults. */
+export const getVesuVaults = getYieldVaults;
 
 export function toBaseUnits(value: string, decimals: number): bigint {
   const normalized = value.trim();

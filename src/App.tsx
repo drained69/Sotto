@@ -24,19 +24,21 @@ import {
   FEE_TOKEN_SYMBOL,
   formatTokenAmount,
   getPoolFee,
+  getPublicBalance,
   getShieldedBalances,
   getTokenSymbol,
-  getVesuVaults,
+  getYieldVaults,
   lendToVesu,
   normalizeAddress,
   parseShieldedBalances,
   privateTransfer,
   shield,
+  toBaseUnits,
   strk20Network,
   TOKENS,
   type TokenSymbol,
   unlendFromVesu,
-  type VesuVault,
+  type YieldVault,
   vesuHelperAddress,
   withdraw,
 } from "./strk20";
@@ -50,6 +52,7 @@ import {
   walletMatchesConfiguredNetwork,
 } from "./walletGuards";
 import { useWallet } from "./useWallet";
+import { bridgeRouteFor } from "./bridges";
 
 type Modal =
   | "deposit"
@@ -63,7 +66,8 @@ type Modal =
 type Toast = { title: string; detail: string; type: "ok" | "error" } | null;
 type SessionTx = { hash: string; label: string; status: string; time: string };
 
-const vaults = getVesuVaults();
+const vaults = getYieldVaults();
+const vesuRouteReady = Boolean(vesuHelperAddress && vaults.length);
 
 function Logo() {
   return (
@@ -120,7 +124,7 @@ function App() {
   const [token, setToken] = useState<TokenSymbol>("USDC");
   const [amount, setAmount] = useState("100");
   const [recipient, setRecipient] = useState("");
-  const [selectedVault, setSelectedVault] = useState<VesuVault | undefined>(
+  const [selectedVault, setSelectedVault] = useState<YieldVault | undefined>(
     vaults[0],
   );
   const [balances, setBalances] = useState<Map<string, bigint>>(new Map());
@@ -135,7 +139,14 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const [transactions, setTransactions] = useState<SessionTx[]>([]);
+  const [view, setView] = useState<"overview" | "positions" | "activity">(
+    () => (window.location.hash.slice(1) as "overview" | "positions" | "activity") || "overview",
+  );
+  const [activityFilter, setActivityFilter] = useState<"All" | "Deposits" | "Transfers" | "Withdrawals" | "Yield">("All");
+  const [selectedActivity, setSelectedActivity] = useState<SessionTx | null>(null);
   const [poolFee, setPoolFee] = useState<bigint | null>(null);
+  /** Public wallet balances, keyed by token symbol, for the deposit modal only. */
+  const [publicBalances, setPublicBalances] = useState<Map<TokenSymbol, bigint>>(new Map());
   const syncInFlight = useRef<Promise<void> | null>(null);
   /** `address:chainId` last auto-synced, so one prompt is raised per account+network. */
   const lastSyncedIdentity = useRef("");
@@ -270,6 +281,27 @@ function App() {
     }
   });
 
+  /**
+   * Reads public STRK/USDC for the connected account. Runs in parallel, ignoring failures
+   * per-token so one bad RPC does not blank the whole row.
+   */
+  const loadPublicBalances = useEffectEvent(async () => {
+    if (!wallet.account || !wallet.address) return;
+    const entries: [TokenSymbol, bigint][] = [];
+    await Promise.all(
+      (Object.entries(TOKENS) as [TokenSymbol, typeof TOKENS[TokenSymbol]][]).map(async ([symbol, config]) => {
+        if (!config.address) return;
+        try {
+          const balance = await getPublicBalance(wallet.account!.provider, config.address, wallet.address);
+          entries.push([symbol, balance]);
+        } catch {
+          // Silent: RPC hiccups on one token should not blank the row.
+        }
+      }),
+    );
+    setPublicBalances(new Map(entries));
+  });
+
   /** Shielded balance available for a token, in base units. */
   function shieldedBalanceOf(address: string): bigint {
     return balances.get(normalizeAddress(address)) ?? 0n;
@@ -305,7 +337,69 @@ function App() {
     );
   }
 
+  /**
+   * Preview line for withdraw/transfer: shows how much of `symbol` remains shielded after the
+   * requested amount is spent. Purely informational — the wallet is authoritative on final
+   * accounting — but exposes the delta before the user signs, so a "max" click that would strand
+   * dust is visible.
+   */
+  function RemainingLine({
+    address,
+    decimals,
+    symbol,
+    spend,
+  }: {
+    address: string;
+    decimals: number;
+    symbol: string;
+    spend: string;
+  }) {
+    let requested = 0n;
+    try {
+      requested = toBaseUnits(spend, decimals);
+    } catch {
+      return null;
+    }
+    const available = shieldedBalanceOf(address);
+    const remaining = available > requested ? available - requested : 0n;
+    const overspend = requested > available;
+    return (
+      <p className={`field-note${overspend ? " field-note-warn" : ""}`}>
+        <span>{overspend ? "Overspent by" : "Shielded after"}</span>
+        <b>
+          {hideBalance
+            ? "••••••"
+            : overspend
+              ? `${formatTokenAmount(requested - available, decimals)} ${symbol}`
+              : `${formatTokenAmount(remaining, decimals)} ${symbol}`}
+        </b>
+      </p>
+    );
+  }
+
   /** Discloses the pool's flat per-transaction fee, which is charged on top of the amount moved. */
+  /**
+   * "Available: 12.5 STRK" line for the deposit modal, showing the PUBLIC wallet balance.
+   *
+   * Distinct from AvailableLine (which reads shielded balances) because deposit spends from the
+   * connected wallet's public state, not from the pool. Includes the pool fee in the max-click so
+   * clicking never produces a "you cannot afford the fee" dry-run failure.
+   */
+  function PublicBalanceLine({ symbol, decimals }: { symbol: TokenSymbol; decimals: number }) {
+    const available = publicBalances.get(symbol) ?? 0n;
+    // Reserve the pool fee only when the deposit token is STRK; other tokens do not fund fees.
+    const feeReserve = symbol === FEE_TOKEN_SYMBOL && poolFee !== null ? poolFee : 0n;
+    const spendable = available > feeReserve ? available - feeReserve : 0n;
+    return (
+      <p className="field-note">
+        <span>Wallet balance</span>
+        <button type="button" className="link-button" disabled={spendable <= 0n} onClick={() => setAmount(formatTokenAmount(spendable, decimals, decimals))}>
+          {hideBalance ? "••••••" : `${formatTokenAmount(available, decimals)} ${symbol}`}
+        </button>
+      </p>
+    );
+  }
+
   function FeeLine() {
     if (poolFee === null) return null;
     return (
@@ -315,6 +409,104 @@ function App() {
           {formatTokenAmount(poolFee, 18)} {FEE_TOKEN_SYMBOL}
         </b>
       </p>
+    );
+  }
+
+  /**
+   * The bridge step for non-Starknet deposits.
+   *
+   * Sotto delegates the actual bridging to Layerswap (which covers CCTP, StarkGate, and other
+   * routes into Starknet) with the destination address pre-filled and locked to the connected
+   * Starknet wallet. The user opens the bridge in a new tab, completes it there, and the arrival
+   * shows up in this modal's PublicBalanceLine automatically — refreshing when it lands means
+   * they can immediately shield without leaving Sotto again.
+   */
+  function BridgeAndShieldPanel({
+    chainId,
+    chainName,
+    amount,
+    token,
+  }: {
+    chainId: string;
+    chainName: string;
+    amount: string;
+    token: TokenSymbol;
+  }) {
+    const route = wallet.address
+      ? bridgeRouteFor({
+          sourceChainId: chainId,
+          sourceChainName: chainName,
+          destinationAddress: wallet.address,
+          asset: token,
+          amount,
+        })
+      : undefined;
+
+    if (!wallet.address) {
+      return (
+        <div className="privacy-callout">
+          <ArrowRightLeft />
+          <p>
+            <strong>Connect a Starknet wallet first</strong>
+            <span>
+              The bridge needs a destination. Connect the Starknet wallet that will hold and shield the funds, then reopen this modal.
+            </span>
+          </p>
+        </div>
+      );
+    }
+
+    if (!route) {
+      return (
+        <div className="privacy-callout">
+          <CircleHelp />
+          <p>
+            <strong>No bridge route from {chainName}</strong>
+            <span>
+              Sotto currently covers Ethereum, Base, and Arbitrum → Starknet via Layerswap. Pick one of those, or bridge manually and then use the Starknet-native flow.
+            </span>
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bridge-panel">
+        <div className="bridge-step">
+          <span className="bridge-step-num">1</span>
+          <div>
+            <strong>Bridge {token} from {route.sourceLabel} → Starknet</strong>
+            <span>
+              Opens {route.provider} with your Starknet address prefilled and locked. Expect {route.eta}. Funds land on your public Starknet wallet.
+            </span>
+          </div>
+          <a
+            className="button primary"
+            href={route.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open {route.provider} <ArrowUpRight size={16} />
+          </a>
+        </div>
+        <div className="bridge-step">
+          <span className="bridge-step-num">2</span>
+          <div>
+            <strong>Return and shield</strong>
+            <span>
+              When the {token} arrives, the "Wallet balance" below updates. Hit Shield to move it into the STRK20 pool in one transaction — that's the private step.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => void loadPublicBalances()}
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -334,9 +526,10 @@ function App() {
     if (lastSyncedIdentity.current === identity) return;
     lastSyncedIdentity.current = identity;
     void syncBalancesOnConnect();
-    // Plain RPC read, so it raises no wallet prompt and can run alongside the balance sync.
+    // Plain RPC reads: no wallet prompts, run alongside the balance sync.
     void loadPoolFee();
-  }, [wallet.address, wallet.chainId, syncBalancesOnConnect, loadPoolFee]);
+    void loadPublicBalances();
+  }, [wallet.address, wallet.chainId, syncBalancesOnConnect, loadPoolFee, loadPublicBalances]);
 
   async function confirmTransaction(hash: string, label: string) {
     setTransactions((items) => [
@@ -376,7 +569,11 @@ function App() {
 
   async function runAssetAction(kind: "deposit" | "withdraw") {
     if (!(await requireLiveWallet())) return;
-    if (kind === "deposit" && selectedChain.id !== "starknet") {
+    // Non-Starknet source is now handled by BridgeAndShieldPanel: the user bridges externally,
+    // funds land in their Starknet wallet, and the shield below spends that public balance. So
+    // the deposit action itself is always Starknet-native — the source chain field is only a
+    // routing hint for the bridge step. No path is disabled.
+    if (kind === "deposit" && false) {
       notify({
         title: "Cross-chain route disabled",
         detail:
@@ -554,6 +751,53 @@ function App() {
                 ? "Synchronizing"
                 : "Unavailable";
 
+  function changeView(nextView: "overview" | "positions" | "activity") {
+    setView(nextView);
+    window.history.replaceState(null, "", `#${nextView}`);
+    setMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = window.location.hash.slice(1);
+      if (next === "overview" || next === "positions" || next === "activity") setView(next);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const filteredTransactions = transactions.filter((item) => {
+    if (activityFilter === "All") return true;
+    if (activityFilter === "Yield") return item.label.toLowerCase().includes("lend") || item.label.toLowerCase().includes("yield");
+    if (activityFilter === "Deposits") return item.label.toLowerCase().includes("shield") || item.label.toLowerCase().includes("deposit");
+    if (activityFilter === "Withdrawals") return item.label.toLowerCase().includes("withdraw");
+    return item.label.toLowerCase().includes("transfer");
+  });
+
+  function ActivityRows({ compact = false }: { compact?: boolean }) {
+    const items = compact ? transactions.slice(0, 3) : filteredTransactions;
+    if (!items.length) {
+      return (
+        <div className="route-empty activity-empty">
+          <Activity />
+          <div>
+            <strong>{compact ? "No recent activity" : "No activity in this view"}</strong>
+            <span>{compact ? "Live STRK20 actions will appear here after confirmation." : "Confirmed history is never fabricated. Submit a live STRK20 action to populate this list."}</span>
+          </div>
+        </div>
+      );
+    }
+    return items.map((item) => (
+      <button className="activity-row activity-button" key={item.hash} onClick={() => setSelectedActivity(item)}>
+        <span className="activity-icon"><Activity /></span>
+        <div className="activity-copy"><strong>{item.label}</strong><span>{item.hash.slice(0, 12)}…{item.hash.slice(-6)}</span></div>
+        <span className="activity-time">{item.time}</span>
+        <div className="activity-amount"><strong>{item.status}</strong><span>View details <ArrowUpRight size={12} /></span></div>
+      </button>
+    ));
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -562,15 +806,15 @@ function App() {
           className={menuOpen ? "nav-open" : ""}
           aria-label="Primary navigation"
         >
-          <a className="active" href="#overview">
+          <a className={view === "overview" ? "active" : ""} href="#overview" onClick={(event) => { event.preventDefault(); changeView("overview"); }}>
             <LayoutDashboard size={17} />
             Overview
           </a>
-          <a href="#positions">
+          <a className={view === "positions" ? "active" : ""} href="#positions" onClick={(event) => { event.preventDefault(); changeView("positions"); }}>
             <Vault size={17} />
             Positions
           </a>
-          <a href="#activity">
+          <a className={view === "activity" ? "active" : ""} href="#activity" onClick={(event) => { event.preventDefault(); changeView("activity"); }}>
             <Activity size={17} />
             Activity
           </a>
@@ -598,6 +842,7 @@ function App() {
         </div>
       </header>
       <main>
+        {view === "overview" && <>
         <section className="intro" id="overview">
           <div>
             <p className="eyebrow">PRIVATE YIELD ACCOUNT</p>
@@ -617,7 +862,7 @@ function App() {
           <div className="balance-head">
             <div>
               <div className="label-row">
-                <span>SHIELDED ASSETS</span>
+                <span>TOTAL PRIVATE ASSETS</span>
                 <button
                   className="icon-button small"
                   onClick={() => setHideBalance(!hideBalance)}
@@ -739,7 +984,7 @@ function App() {
                 </span>
               </div>
             ) : knownBalances.length ? (
-              knownBalances.map((entry) => (
+              liquidBalances.map((entry) => (
                 <div className="token-balance" key={entry.address}>
                   <span className="token-symbol">
                     {entry.symbol.slice(0, 1)}
@@ -748,22 +993,22 @@ function App() {
                     <strong>{entry.symbol}</strong>
                     <small>
                       {entry.vault
-                        ? "Vesu private position"
-                        : "Shielded balance"}
+                        ? `${entry.vault.protocol} ${entry.vault.label} — ${entry.vault.kind === "stake" ? "staking" : entry.vault.kind === "reactor" ? "actively managed" : "lending"}`
+                        : "Shielded in STRK20 pool"}
                     </small>
                   </p>
                   <b>{displayAmount(entry)}</b>
                 </div>
               ))
-            ) : (
+            ) : !liquidBalances.length ? (
               <div className="account-empty">
                 <ShieldCheck />
-                <strong>No shielded balances</strong>
+                <strong>No liquid private assets</strong>
                 <span>
                   Deposit an asset to create your first encrypted note.
                 </span>
               </div>
-            )}
+            ) : null}
           </div>
           <div className="metrics-row">
             <div>
@@ -777,11 +1022,11 @@ function App() {
               <small>Configured vTokens</small>
             </div>
             <div>
-              <span>VESU ROUTE</span>
+              <span>DEFI VENUES</span>
               <strong>
-                {vesuHelperAddress ? "Configured" : "Not deployed"}
+                 {vesuRouteReady ? `${new Set(vaults.map((v) => v.protocol)).size} live` : "Not deployed"}
               </strong>
-              <small>{vaults.length} verified vaults</small>
+              <small>{vaults.length} verified vaults across {Array.from(new Set(vaults.map((v) => v.kind === "stake" ? "stake" : v.kind === "reactor" ? "managed" : "lend"))).sort().join(" + ") || "lend"}</small>
             </div>
             <div>
               <span>ACCOUNT STATUS</span>
@@ -798,13 +1043,27 @@ function App() {
             </div>
           </div>
         </section>
+        <section className="overview-lower">
+          <div className="section-head compact">
+            <div><p className="eyebrow">LATEST MOVEMENT</p><h2>Recent activity</h2></div>
+            <button className="button text-button" onClick={() => changeView("activity")}>View all <ArrowUpRight size={16} /></button>
+          </div>
+          <div className="activity-list"><ActivityRows compact /></div>
+        </section>
+        </>}
+        {view === "positions" && <>
+        <section className="page-intro">
+          <p className="eyebrow">DEPLOYED CAPITAL</p>
+          <h1>Where your capital<br /><span>is working.</span></h1>
+          <p className="page-intro-copy">Active lending and staking positions routed through Sotto's private execution layer.</p>
+        </section>
         <section className="section" id="positions">
           <div className="section-head">
             <div>
               <p className="eyebrow">ON-CHAIN POSITIONS</p>
               <h2>Private yield</h2>
               <p className="section-subtitle">
-                Shielded capital routed into verified lending markets.
+                Shielded capital routed into verified DeFi venues — lending and liquid staking, each under an anonymized identity.
               </p>
             </div>
             <button
@@ -835,9 +1094,9 @@ function App() {
                   return (
                     <article className="position-row" key={vault.id}>
                       <div className="position-name">
-                        <span className="protocol-mark">V</span>
+                        <span className="protocol-mark">{vault.protocol.slice(0, 1)}</span>
                         <div>
-                          <strong>Vesu</strong>
+                          <strong>{vault.protocol}</strong>
                           <span>{vault.label}</span>
                         </div>
                       </div>
@@ -846,8 +1105,8 @@ function App() {
                         <strong>{vault.underlying}</strong>
                       </div>
                       <div className="position-stat">
-                        <span>ROUTE</span>
-                        <strong className="apy">Live</strong>
+                        <span>TYPE</span>
+                        <strong className="apy">{vault.kind === "stake" ? "Stake" : vault.kind === "reactor" ? "Managed" : "Lend"}</strong>
                       </div>
                       <div className="position-stat">
                         <span>SHARES</span>
@@ -894,10 +1153,9 @@ function App() {
                 <div className="route-empty">
                   <CircleHelp />
                   <div>
-                    <strong>No lending route deployed</strong>
+                    <strong>No yield route deployed</strong>
                     <span>
-                      Set the audited Vesu helper and verified vault addresses
-                      to enable real positions.
+                      Set VITE_VESU_LENDING_HELPER_ADDRESS to Sotto's deployed helper on this network to enable the configured Vesu and Endur vaults.
                     </span>
                   </div>
                 </div>
@@ -908,10 +1166,9 @@ function App() {
                 <Fingerprint />
               </div>
               <p className="eyebrow">EXECUTION ROUTE</p>
-              <h3>Wallet → STRK20 → helper → Vesu</h3>
+              <h3>Wallet → STRK20 → helper → DeFi venue</h3>
               <p>
-                The helper action and amount are public. The initiating wallet
-                and private vToken owner are hidden.
+                The helper call and amount are public. The initiating wallet and the private share owner are hidden. One helper, many venues — each vault sees only the helper as its counterparty, not you.
               </p>
               <dl>
                 <div>
@@ -925,8 +1182,8 @@ function App() {
                 <div>
                   <dt>Helper</dt>
                   <dd>
-                    {vesuHelperAddress
-                      ? `${vesuHelperAddress.slice(0, 8)}…`
+                     {vesuRouteReady && vesuHelperAddress
+                       ? `${vesuHelperAddress.slice(0, 8)}…`
                       : "Missing"}
                   </dd>
                 </div>
@@ -934,54 +1191,22 @@ function App() {
             </aside>
           </div>
         </section>
-        <section className="lower-grid">
-          <div className="section activity-section" id="activity">
-            <div className="section-head compact">
-              <div>
-                <p className="eyebrow">CURRENT SESSION</p>
-                <h2>Submitted transactions</h2>
-              </div>
-            </div>
-            <div className="activity-list">
-              {transactions.length ? (
-                transactions.map((item) => (
-                  <a
-                    className="activity-row live-tx"
-                    key={item.hash}
-                    href={`${wallet.networkName === "Sepolia" ? "https://sepolia.voyager.online" : "https://voyager.online"}/tx/${item.hash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="activity-icon">
-                      <Activity />
-                    </span>
-                    <div className="activity-copy">
-                      <strong>{item.label}</strong>
-                      <span>
-                        {item.hash.slice(0, 12)}…{item.hash.slice(-6)}
-                      </span>
-                    </div>
-                    <span className="activity-time">{item.time}</span>
-                    <div className="activity-amount">
-                      <strong>{item.status}</strong>
-                      <span>Open explorer</span>
-                    </div>
-                  </a>
-                ))
-              ) : (
-                <div className="route-empty">
-                  <Activity />
-                  <div>
-                    <strong>No transactions this session</strong>
-                    <span>
-                      Confirmed history is never fabricated. Submit a live
-                      STRK20 action to populate this list.
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
+        </>}
+        {view === "activity" && <>
+        <section className="page-intro activity-page-intro" id="activity">
+          <p className="eyebrow">PRIVATE LEDGER</p>
+          <h1>What happened<br /><span>to your capital.</span></h1>
+          <p className="page-intro-copy">A confirmed record of deposits, transfers, withdrawals, and yield activity from this session.</p>
+        </section>
+        <section className="section activity-section dedicated-activity">
+          <div className="section-head compact"><div><p className="eyebrow">TRANSACTION HISTORY</p><h2>Activity</h2></div></div>
+          <div className="activity-filters" role="tablist">
+            {(["All", "Deposits", "Transfers", "Withdrawals", "Yield"] as const).map((filter) => <button key={filter} className={activityFilter === filter ? "selected" : ""} onClick={() => setActivityFilter(filter)}>{filter}</button>)}
           </div>
+          <div className="activity-list"><ActivityRows /></div>
+        </section>
+        </>}
+        {view === "overview" && <section className="overview-privacy">
           <aside className="privacy-card">
             <div className="privacy-card-top">
               <span className="shield-orbit">
@@ -1016,7 +1241,7 @@ function App() {
               View exact privacy model <ArrowUpRight size={16} />
             </button>
           </aside>
-        </section>
+        </section>}
       </main>
       <footer>
         <Logo />
@@ -1094,15 +1319,38 @@ function App() {
               ) : (
                 <div className="empty-state">
                   <Wallet />
-                  <strong>No Starknet wallet detected</strong>
+                  <strong>
+                    {wallet.xverseDetected
+                      ? "Xverse cannot sign STRK20 requests"
+                      : "No compatible Starknet wallet detected"}
+                  </strong>
                   <span>
-                    Install a privacy-enabled Starknet wallet such as Ready.
+                    {wallet.xverseDetected
+                      ? "Xverse is installed, but its dapp provider does not expose the Starknet Wallet API required for private transactions. Use a privacy-enabled wallet such as Ready."
+                      : "Install a privacy-enabled Starknet wallet such as Ready, then reload this page."}
                   </span>
                 </div>
               )}
             </div>
           )}
           {wallet.error && <p className="form-error">{wallet.error}</p>}
+        </ModalShell>
+      )}
+      {selectedActivity && (
+        <ModalShell
+          title={selectedActivity.label}
+          eyebrow="ACTIVITY DETAIL"
+          onClose={() => setSelectedActivity(null)}
+        >
+          <dl className="activity-detail">
+            <div><dt>Amount</dt><dd>{selectedActivity.label}</dd></div>
+            <div><dt>Status</dt><dd>{selectedActivity.status}</dd></div>
+            <div><dt>Submitted</dt><dd>{selectedActivity.time}</dd></div>
+            <div><dt>Transaction hash</dt><dd className="hash-value">{selectedActivity.hash}</dd></div>
+          </dl>
+          <a className="button primary modal-cta" href={`${wallet.networkName === "Sepolia" ? "https://sepolia.voyager.online" : "https://voyager.online"}/tx/${selectedActivity.hash}`} target="_blank" rel="noreferrer" onClick={() => setSelectedActivity(null)}>
+            Open explorer <ArrowUpRight size={16} />
+          </a>
         </ModalShell>
       )}
       {modal === "deposit" && (
@@ -1138,10 +1386,12 @@ function App() {
             </div>
           </label>
           {selectedChain.id !== "starknet" && (
-            <p className="form-error">
-              This route is disabled until the Privacy Bridge contracts and
-              services are configured. No funds will be requested.
-            </p>
+            <BridgeAndShieldPanel
+              chainId={selectedChain.id}
+              chainName={selectedChain.name}
+              amount={amount}
+              token={token}
+            />
           )}
           <div className="form-row">
             <label className="field">
@@ -1165,6 +1415,7 @@ function App() {
               />
             </label>
           </div>
+          <PublicBalanceLine symbol={token} decimals={TOKENS[token].decimals} />
           <FeeLine />
           <button
             className="button primary modal-cta"
@@ -1221,6 +1472,12 @@ function App() {
             address={TOKENS[token].address}
             decimals={TOKENS[token].decimals}
             symbol={token}
+          />
+          <RemainingLine
+            address={TOKENS[token].address}
+            decimals={TOKENS[token].decimals}
+            symbol={token}
+            spend={amount}
           />
           <label className="field">
             <span>Fresh Starknet address</span>
@@ -1297,6 +1554,12 @@ function App() {
             address={TOKENS[token].address}
             decimals={TOKENS[token].decimals}
             symbol={token}
+          />
+          <RemainingLine
+            address={TOKENS[token].address}
+            decimals={TOKENS[token].decimals}
+            symbol={token}
+            spend={amount}
           />
           <label className="field">
             <span>Recipient Starknet address</span>

@@ -6,10 +6,13 @@ signed. The current Railway login has no linked Sotto project.
 ## Existing config
 
 `railway.toml` sets the health check and restart policy. Railway builds the
-repository's multi-stage `Dockerfile`, and Caddy serves the generated SPA:
+repository's multi-stage `Dockerfile`, and Caddy serves the generated SPA. The
+production image runs `npm run build:mainnet`, which includes the reviewed
+Mainnet vault allowlist and reads the deployed helper from
+`VITE_VESU_LENDING_HELPER_ADDRESS`:
 
 ```text
-node:22-alpine -> npm ci -> npm run build
+node:22-alpine -> npm ci -> Mainnet build with the verified helper -> Caddy
 caddy:2.10.0-alpine -> serve /srv on ${PORT:-3000}
 ```
 
@@ -26,16 +29,16 @@ All `VITE_` values are embedded in the browser bundle. Allowed:
 VITE_STRK20_NETWORK=mainnet
 VITE_STARKNET_MAINNET_RPC_URL=https://<trusted-mainnet-rpc>
 VITE_STARKNET_SEPOLIA_RPC_URL=https://<trusted-sepolia-rpc>
-VITE_VESU_LENDING_HELPER_ADDRESS=
-VITE_VESU_VAULTS={"vaults":[]}
+VITE_VESU_LENDING_HELPER_ADDRESS=0x06277c357edf60e9acbbd5a9efaeb8fcb0d0b0daf1f06801ed94d4247a9b1e6a
+VITE_VESU_VAULTS=<build:mainnet supplies the reviewed Prime vaults>
 ```
 
 Never place private keys, authenticated RPC credentials, paymaster secrets,
 or manager keys in `VITE_` variables.
 
-A Mainnet build must keep the helper and vault list empty until both
-addresses are two-person verified. The UI then reports the Vesu route as
-not deployed.
+A Mainnet build must keep the helper empty until the deployed class and vault
+addresses are verified. The UI reports the route as configured only when both
+the helper and at least one valid vault are present.
 
 ## Commands to run after a named approver exists
 

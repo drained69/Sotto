@@ -60,6 +60,8 @@ export type WalletState = {
   apiProbeError: string;
   strk20Capable: boolean;
   wallets: WalletWithStarknetFeatures[];
+  /** Xverse injects a provider, but not the Starknet Wallet API required by STRK20. */
+  xverseDetected: boolean;
   connecting: boolean;
   /** True while a remembered wallet is being reattached after a reload. */
   restoring: boolean;
@@ -73,6 +75,7 @@ const INITIAL: WalletState = {
   apiProbeError: "",
   strk20Capable: false,
   wallets: [],
+  xverseDetected: false,
   connecting: false,
   restoring: false,
   error: "",
@@ -93,9 +96,24 @@ export function useWallet() {
       setState((current) => ({
         ...current,
         wallets: wallets.filter((wallet) => !wallet.name.toLowerCase().includes("metamask")),
+        xverseDetected: "XverseProviders" in window,
       }));
     update(store.getWallets());
-    return store.subscribe(update);
+    const unsubscribe = store.subscribe(update);
+
+    // Legacy extensions can inject after the store's initial window scan. Refresh briefly while the
+    // page settles so Ready, Argent and other compatible wallets are not missed on first load.
+    const refresh = window.setInterval(() => {
+      store._refreshInjectedWallets();
+      update(store.getWallets());
+    }, 500);
+    const stopRefresh = window.setTimeout(() => window.clearInterval(refresh), 5000);
+
+    return () => {
+      window.clearInterval(refresh);
+      window.clearTimeout(stopRefresh);
+      unsubscribe();
+    };
   }, []);
 
   /**
@@ -211,7 +229,11 @@ export function useWallet() {
   function reset() {
     connectedWallet.current = null;
     attachedIdentity.current = "";
-    setState((current) => ({ ...INITIAL, wallets: current.wallets }));
+    setState((current) => ({
+      ...INITIAL,
+      wallets: current.wallets,
+      xverseDetected: current.xverseDetected,
+    }));
   }
 
   function disconnect() {

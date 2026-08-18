@@ -95,11 +95,13 @@ export function actionErrorNotice(error: unknown, fallbackTitle: string): { titl
     };
   }
   if (is(163, "UNKNOWN_ERROR")) {
-    // 163 is the wallet's catch-all: it carries no cause, so the only honest thing to do is name
-    // what is actually known to go wrong here rather than repeat the empty label back.
+    // 163 is the wallet's catch-all: it carries no cause, so the only honest thing to do is list
+    // the resolvable causes seen in practice. Wallet dry-run failures for insufficient token
+    // balance surface here on Mainnet — the wallet cannot compute a proof it cannot fund — and
+    // that is the single most common cause for a user who has not yet shielded anything.
     return {
       title: "Wallet could not complete the request",
-      detail: "The wallet reported no reason. Most often this is privacy not being activated for this account, or this network not being served by the wallet's privacy service. Check that shielding is enabled, and try Mainnet if you are on a testnet.",
+      detail: "Common causes: (1) not enough of the spent token in this wallet on this network, including the pool fee on top of the amount; (2) shielding not activated for this account; (3) the wallet's privacy service does not cover the connected network. Check your public balance first, then confirm shielding is active in your wallet.",
     };
   }
   return { title: fallbackTitle, detail: message || "Unknown error." };

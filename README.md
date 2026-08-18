@@ -1,8 +1,10 @@
 # Sotto
 
-Sotto is a privacy-focused yield account for Starknet. It gives users a single interface for shielding assets, viewing wallet-discovered private balances, moving funds into supported DeFi positions, and withdrawing to a new address.
+Sotto is a private yield account for DeFi. It lets users hold shielded assets, lend, stake, and allocate capital across supported strategies without exposing their total holdings or making every position easy to link back to one identity.
 
-The product is built around STRK20, a private token standard that represents balances as encrypted notes. Sotto does not custody viewing keys, reconstruct private balances in the browser, or display fabricated portfolio data. Note discovery and proof generation remain the responsibility of the connected privacy-enabled wallet.
+Users can deposit from supported chains, manage their private account from one interface, move capital between configured DeFi positions, and withdraw to a fresh wallet when they are ready to exit. The account is non-custodial: Sotto never asks for seed phrases, private keys, or viewing keys.
+
+The current implementation uses STRK20 on Starknet. STRK20 represents balances as encrypted notes, while the connected privacy-enabled wallet remains responsible for note discovery, viewing-key custody, proof generation, and transaction authorization. Cross-chain deposits and additional DeFi protocols are represented in the product model but remain disabled until their bridge, relayer, indexer, and contract integrations are deployed and verified.
 
 ## Table of contents
 
@@ -28,14 +30,22 @@ The product is built around STRK20, a private token standard that represents bal
 
 ## Product overview
 
-Public DeFi activity can expose a detailed relationship between a wallet, its balances, and its positions. Sotto reduces that linkage by placing supported assets into the STRK20 privacy pool before they are transferred or routed into an integrated protocol.
+Public DeFi activity can expose a detailed relationship between a wallet, its balances, and its positions. Sotto is designed to make the private account the primary place where capital is held and allocated. Supported assets enter a privacy pool before they are transferred or routed into an integrated protocol, reducing the amount of portfolio information visible from a single public address.
 
-The account dashboard provides four primary functions:
+The product is built around four principles:
 
-1. Connect a Starknet wallet and verify that it supports the required privacy APIs.
+- **Private by default:** balances and internal transfers are discovered through the user's wallet rather than reconstructed by the frontend.
+- **One account for many strategies:** lending, staking, reserve holdings, and future protocol routes can be managed from the same shielded account.
+- **Chain-agnostic entry and exit:** users should be able to deposit from supported source chains and withdraw to a fresh destination wallet as bridge infrastructure becomes available.
+- **Explicit trust boundaries:** public deposit and withdrawal edges, protocol activity, configuration limits, and remaining DeFi risks are shown clearly.
+
+The account dashboard provides five primary functions:
+
+1. Connect a compatible privacy wallet and verify the capabilities required by the selected route.
 2. Discover shielded balances through the wallet-owned viewing key.
-3. Submit shield, private transfer, withdrawal, and configured private lending actions.
-4. Track transactions submitted during the current browser session and verify their receipts on Starknet.
+3. Submit deposits, private transfers, withdrawals, and configured lending or staking actions.
+4. Allocate capital across available strategies while keeping internal account balances private.
+5. Track transactions submitted during the current browser session and verify their receipts on-chain.
 
 Sotto is intentionally fail-closed. If a token, lending helper, vault, bridge, or wallet capability is not configured, the related action remains unavailable. The application does not replace missing integrations with mock transactions, estimated balances, invented yield rates, or synthetic confirmations.
 
@@ -63,16 +73,18 @@ Sotto is intentionally fail-closed. If a token, lending helper, vault, bridge, o
 - Transfers configured assets privately to another registered STRK20 account.
 - Queries private balances with `strk20Balances`.
 - Withdraws shielded assets to a user-selected Starknet address.
+- Supports the fresh-wallet withdrawal pattern intended to reduce direct address reuse.
 - Waits for transaction receipts and distinguishes confirmed transactions from reverted transactions.
 - Refreshes private balances after successful settlement.
 
-### Private Vesu lending route
+### Private yield allocation
 
 - Reads an allowlisted set of Vesu vaults from deployment configuration.
 - Converts shielded underlying assets into private vToken notes through an app-specific anonymizer.
 - Dry-runs the complete STRK20 action list before requesting the final proof and submission.
 - Recognizes configured vToken balances as private yield positions in the dashboard.
-- Remains disabled unless both the anonymizer and vault addresses pass configuration validation.
+- Keeps each lending, staking, or allocation route disabled unless its helper, contracts, and market configuration pass validation.
+- Provides the product surface for adding more protocols without exposing a public aggregate portfolio.
 
 ### Privacy-aware interface
 
@@ -92,8 +104,10 @@ Sotto is intentionally fail-closed. If a token, lending helper, vault, bridge, o
 | Starknet withdrawals | Implemented | Submits a STRK20 `withdraw` action to the requested recipient. |
 | Private transfers | Implemented | Submits a STRK20 `transfer` action to a registered recipient address. |
 | Receipt tracking | Implemented | Tracks transactions submitted in the current browser session. |
-| Vesu lending | Configuration-dependent | Enabled only when an audited helper and verified vault addresses are configured. |
-| Ethereum, Base, and Arbitrum deposits | Interface only | Routes are shown but disabled until the Privacy Bridge infrastructure is deployed. |
+| Vesu lending | Configuration-dependent | The first live yield route; enabled only when a reviewed helper and verified vault addresses are configured. |
+| Additional lending and staking protocols | Planned | The account model is designed for multiple strategies, but each protocol requires its own reviewed adapter and route. |
+| Ethereum, Base, and Arbitrum deposits | Interface only | Source-chain routes are shown but disabled until Privacy Bridge infrastructure is deployed and tested. |
+| Fresh-wallet withdrawal guidance | Implemented | The withdrawal flow recommends an unused destination address, while the user remains responsible for address selection. |
 | Historical portfolio indexing | Not included | The activity panel only contains transactions submitted in the current session. |
 | Live APY data | Not included | Sotto does not render a rate unless a verified market-data source is integrated. |
 
@@ -136,7 +150,7 @@ The frontend never receives the user's viewing key. It only receives the balance
 
 The recipient must be registered with the STRK20 pool before the transfer can settle. Sotto does not ask users for viewing keys or attempt to perform note discovery in the browser.
 
-### Opening a Vesu position
+### Opening a private yield position
 
 The Vesu route combines two STRK20 actions:
 
@@ -189,6 +203,8 @@ The STRK20 protocol also includes auditor-encrypted viewing-key material as part
 
 ## Supported assets and networks
 
+Sotto's long-term account model is multi-chain, but support is activated route by route. A chain appearing in the interface does not mean deposits are currently enabled on that chain.
+
 ### Networks
 
 | Network | Wallet connection | Shield and withdraw | Vesu route |
@@ -224,17 +240,17 @@ If no wallet is listed, install a Starknet wallet that implements the required S
 ### Deposit into Sotto
 
 1. Select **Deposit**.
-2. Choose **Starknet** as the source chain.
-3. Select STRK or USDC.
-4. Enter the amount to shield.
-5. Approve proof generation and submission in the wallet.
-6. Wait for the transaction to confirm and the account balance to synchronize.
+2. Choose a supported source chain.
+3. Select a configured asset and enter the amount to shield.
+4. Approve the source-chain transfer or bridge flow, when applicable.
+5. Approve proof generation and submission in the privacy wallet.
+6. Wait for the transaction to confirm and the private account balance to synchronize.
 
 ### Withdraw from Sotto
 
 1. Select **Withdraw**.
 2. Choose the asset and amount.
-3. Enter a valid Starknet destination address.
+3. Enter a valid destination address on a supported withdrawal network. Use a genuinely fresh wallet when reducing direct linkage matters.
 4. Review the public-exit warning.
 5. Approve the private withdrawal in the wallet.
 6. Verify the confirmed transaction through the explorer link in the activity panel.
@@ -340,10 +356,11 @@ npm install
 cp .env.example .env.local
 ```
 
-The included public RPC endpoints are suitable for basic development. Blast
-public Starknet endpoints are retired; the example file uses dRPC for Mainnet
-and Cartridge for Sepolia. Use dedicated RPC endpoints for reliable testing
-and production traffic.
+Sepolia: use `npm run dev:sepolia` (loads `.env.sepolia`) instead of flipping
+the Mainnet template. The included public RPC endpoints are suitable for
+basic development. Blast public Starknet endpoints are retired; the example
+file uses Lava for Mainnet and Cartridge for Sepolia. Use dedicated RPC
+endpoints for reliable testing and production traffic.
 
 ### Start the development server
 
@@ -605,7 +622,8 @@ This is expected until the Privacy Bridge contracts and supporting services are 
 │   ├── strk20.ts        STRK20 actions, token configuration, and Vesu route
 │   ├── styles.css       Responsive application styles
 │   └── useWallet.ts     Wallet discovery, connection, and capability detection
-├── .env.example         Public deployment configuration template
+├── .env.example         Public Mainnet template (Vesu fail-closed)
+├── .env.sepolia         Public Sepolia profile for `vite --mode sepolia`
 ├── index.html
 ├── package.json
 ├── tsconfig.app.json

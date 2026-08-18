@@ -86,7 +86,7 @@ Until that review exists, `VITE_VESU_LENDING_HELPER_ADDRESS` and
 | Network | Class hash | Contract | Status |
 | --- | --- | --- | --- |
 | Sepolia | `0x01d4a3353a4d7d89f2a8e3e154e3597bdb356158f9e1c8a1c2c3c83fa4742970` | `0x03ef9a499a3be674f6b2af553adf2ab1d2d5fe130002e4e09113f5cfd1adc297` | Declared and deployed 2026-08-17; verified class hash on-chain; not a frozen Mainnet release. Token/pool/vault review: `docs/sepolia-addresses.md` |
-| Mainnet | Do not declare | Do not deploy | Blocked |
+| Mainnet | `0x0424a607bd691a277eba542917d6378a5e059db49829d881b19af3eabb3b8ff4` | `0x06277c357edf60e9acbbd5a9efaeb8fcb0d0b0daf1f06801ed94d4247a9b1e6a` | Deployed 2026-08-18; tx `0x018af3f4d95f6d8064c56738daba6d82ae99d4be6144af8966aeef828ad4c52b` |
 
 ## Economic and admin risks
 

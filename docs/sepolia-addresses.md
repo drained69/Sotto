@@ -136,7 +136,7 @@ Do not mix that vault list with official token addresses.
 
 ## Frontend configuration
 
-Use `npm run dev:sepolia` / `npm run build:sepolia`, or copy the Sepolia block
-from `.env.example` into `.env.local`. The helper is set so operators can see
-the reviewed address; the vault list stays empty so the lending route
-fail-closes.
+Use `npm run dev:sepolia` / `npm run build:sepolia` (Vite `--mode sepolia`
+loads `.env.sepolia`), or copy the Sepolia block from `.env.example` into
+`.env.local`. The helper is set so operators can see the reviewed address;
+the vault list stays empty so the lending route fail-closes.
