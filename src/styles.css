@@ -101,12 +101,38 @@ h1 span { font-family: "Newsreader", serif; font-weight: 400; color: #647169; }
 .section-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; gap: 24px; }
 .section-head h2, .privacy-card h2, .modal h2 { font-size: 29px; font-weight: 500; letter-spacing: 0; margin: 0; }
 .section-subtitle { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 10px 0 0; }
+.data-provenance { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; color: var(--muted); font: 500 9px "DM Mono", monospace; }
+.data-provenance span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Overview compact summary — one line explaining what's held, links to Portfolio. Replaces the
+   old detailed grid so Overview stays a "quick understanding" surface. */
+.live-balances-compact { min-height: 0; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 22px; }
+.live-balances-compact .account-empty { min-height: 130px; }
+.overview-portfolio-summary { display: flex; justify-content: space-between; align-items: baseline; margin-top: 24px; padding: 22px 0 4px; border-top: 1px solid var(--line); }
+.overview-portfolio-summary .eyebrow { margin-bottom: 6px; }
+.overview-portfolio-summary p { margin: 0; font-size: 14px; font-weight: 500; color: var(--ink); }
+
+/* Portfolio page grid — same tokens as Overview used to show, but with wider tiles so a full
+   asset name + protocol label sits comfortably at desktop widths. */
+.portfolio-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.portfolio-grid .token-balance { min-height: 88px; padding: 18px 22px; }
+.portfolio-grid .token-balance { background: rgba(248, 249, 245, .52); }
+.portfolio-grid .token-balance b { font-size: 14px; }
+.portfolio-grid .token-symbol { background: var(--green); color: var(--acid); }
+.portfolio-grid .token-balance p small { line-height: 1.4; }
+.verified-dot { width: 7px; height: 7px; border-radius: 50%; background: #3c7459; }
 .text-button { border-color: var(--line); background: transparent; }
 .allocation-layout { display: grid; grid-template-columns: minmax(0, 1fr) 285px; gap: 38px; }
 .allocation-list { border-top: 1px solid var(--ink); }
 .position-header { min-height: 38px; display: grid; grid-template-columns: minmax(150px, 1.5fr) .6fr .6fr .6fr 1fr 78px; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); color: var(--muted); font: 500 9px "DM Mono", monospace; letter-spacing: 1px; }
 .align-right { text-align: right; }
 .position-row { min-height: 92px; display: grid; grid-template-columns: minmax(150px, 1.5fr) .6fr .6fr .6fr 1fr 78px; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); }
+.position-entry { border-bottom: 1px solid var(--line); }
+.position-entry .position-row { border-bottom: 0; }
+.vault-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0 0 14px 49px; gap: 12px; }
+.vault-facts div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.vault-facts dt { color: var(--muted); font: 500 8px "DM Mono", monospace; text-transform: uppercase; }
+.vault-facts dd { margin: 0; overflow-wrap: anywhere; font-size: 9px; }
 .position-name { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .protocol-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; font-weight: 700; font-size: 13px; flex: none; }
 .position-name div, .position-stat, .position-value { display: flex; flex-direction: column; gap: 5px; }
@@ -153,6 +179,18 @@ h1 span { font-family: "Newsreader", serif; font-weight: 400; color: #647169; }
 .activity-filters button.selected { color: var(--ink); border-bottom-color: var(--ink); }
 .overview-lower { padding: 58px 0 70px; border-bottom: 1px solid var(--line); }
 .overview-lower .section-head { margin-bottom: 22px; }
+.activity-bar { display: grid; grid-template-columns: 215px minmax(0, 1fr); gap: 38px; align-items: start; padding: 34px 0; background: #e9ece5; border-top: 1px solid var(--line); }
+.activity-bar-head { display: flex; flex-direction: column; justify-content: space-between; min-height: 124px; }
+.activity-bar-head h2 { margin: 0; font-size: 22px; font-weight: 500; }
+.activity-bar-head .button { align-self: flex-start; min-height: 34px; padding: 0 11px; }
+.activity-bar-list { border-top-color: #aeb6ae; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.activity-bar-list .activity-row { min-height: 124px; padding: 0 18px; grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: 1fr auto; gap: 8px 12px; border-bottom: 0; border-right: 1px solid var(--line); }
+.activity-bar-list .activity-row:first-child { padding-left: 0; }
+.activity-bar-list .activity-row:last-child { border-right: 0; }
+.activity-bar-list .activity-icon { grid-row: 1 / span 2; }
+.activity-bar-list .activity-time { grid-column: 2; grid-row: 2; }
+.activity-bar-list .activity-amount { grid-column: 2; grid-row: 1; align-self: center; }
+.activity-bar-list .activity-amount span { display: none; }
 .overview-privacy { border-bottom: 1px solid var(--line); }
 .overview-privacy .privacy-card { width: min(460px, 100%); margin-left: auto; min-height: 410px; }
 .dedicated-activity { min-height: 400px; padding-top: 45px; }
@@ -186,12 +224,14 @@ h1 span { font-family: "Newsreader", serif; font-weight: 400; color: #647169; }
 .privacy-checks svg { width: 14px; color: var(--acid); }
 .privacy-card > button { margin-top: auto; padding: 16px 0 0; border: 0; border-top: 1px solid #525d55; background: transparent; color: white; display: flex; justify-content: space-between; cursor: pointer; font-size: 11px; }
 
-footer { width: min(1200px, calc(100% - 7vw)); margin: 0 auto; min-height: 105px; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; color: var(--muted); font-size: 10px; }
+footer { width: min(1200px, calc(100% - 7vw)); margin: 0 auto; min-height: 105px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 10px; }
 footer .logo { color: var(--ink); font-size: 16px; }
 footer .logo-mark { width: 22px; height: 22px; }
 footer p { margin: 0; text-align: center; }
 footer > div:last-child { justify-self: end; display: flex; gap: 17px; }
 footer a:hover { color: var(--ink); }
+.github-link { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(248, 249, 245, .45); transition: color .15s, border-color .15s, transform .15s; }
+.github-link:hover { border-color: var(--ink); transform: translateY(-1px); }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(23, 28, 24, .48); backdrop-filter: blur(6px); display: grid; place-items: center; padding: 20px; animation: fade .18s ease-out; }
 .modal { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; background: var(--paper); border-top: 3px solid var(--ink); padding: 28px; box-shadow: 0 24px 70px rgba(0,0,0,.2); animation: rise .22s ease-out; }
@@ -201,6 +241,15 @@ footer a:hover { color: var(--ink); }
 .privacy-callout > svg { width: 20px; flex: none; color: #497158; }
 .privacy-callout p { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 11px; line-height: 1.5; }
 .privacy-callout span { color: var(--muted); }
+/* Two-step cross-chain deposit panel. Step 1 opens the bridge in a new tab; step 2 refreshes the
+   public balance so the shield button below the modal picks up the arrival. */
+.bridge-panel { display: flex; flex-direction: column; gap: 12px; margin: 20px 0 4px; padding: 14px; background: #edf0e9; border: 1px solid #d0d6c9; }
+.bridge-step { display: grid; grid-template-columns: 26px 1fr auto; gap: 12px; align-items: center; }
+.bridge-step + .bridge-step { padding-top: 12px; border-top: 1px solid #d8ddd1; }
+.bridge-step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: white; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.bridge-step strong { display: block; font-size: 12px; margin-bottom: 3px; }
+.bridge-step span { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
+.bridge-step .button { height: 34px; min-height: 34px; padding: 0 12px; font-size: 11px; white-space: nowrap; }
 .field { display: grid; gap: 8px; margin-top: 17px; }
 .field > span { font: 500 9px "DM Mono", monospace; letter-spacing: 1px; color: var(--muted); }
 .chain-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
@@ -318,6 +367,7 @@ footer a:hover { color: var(--ink); }
   .section-head .text-button { width: 43px; padding: 0; font-size: 0; flex: none; }
   .position-header { display: none; }
   .position-row { grid-template-columns: minmax(130px, 1fr) 72px 43px; gap: 12px; min-height: 88px; }
+  .vault-facts { grid-template-columns: 1fr 1fr; padding: 0 0 16px; }
   .position-stat { display: none; }
   .position-value { display: flex; }
   .position-row > .text-button { width: 43px; padding: 0; }
@@ -331,7 +381,7 @@ footer a:hover { color: var(--ink); }
   .activity-filters { overflow-x: auto; margin-right: -18px; padding-right: 18px; }
   .activity-filters button { white-space: nowrap; padding-left: 11px; padding-right: 11px; }
   .privacy-card { margin: 0 -18px; padding: 35px 18px; min-height: 470px; }
-  footer { grid-template-columns: 1fr auto; min-height: 100px; }
+  footer { min-height: 100px; }
   footer p { display: none; }
   footer > div:last-child a, footer > div:last-child span { display: none; }
   footer > div:last-child a:first-child { display: block; }
@@ -347,11 +397,119 @@ footer a:hover { color: var(--ink); }
   .overview-lower { padding: 45px 0 55px; }
   .overview-lower .section-head { align-items: center; }
   .overview-lower .text-button { min-height: 36px; padding: 0 10px; }
+  .activity-bar { display: block; padding: 30px 0; }
+  .activity-bar-head { min-height: 0; flex-direction: row; align-items: center; margin-bottom: 23px; }
+  .activity-bar-head h2 { font-size: 20px; }
+  .activity-bar-list { display: block; }
+  .activity-bar-list .activity-row, .activity-bar-list .activity-row:first-child { min-height: 74px; padding: 0; grid-template-columns: 38px minmax(120px, 1fr) 90px; grid-template-rows: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .activity-bar-list .activity-icon { grid-row: auto; }
+  .activity-bar-list .activity-time { grid-column: auto; grid-row: auto; display: none; }
+  .activity-bar-list .activity-amount { grid-column: auto; grid-row: auto; }
+  .activity-bar-list .activity-amount span { display: inline-flex; }
   .overview-privacy .privacy-card { margin: 0 -18px; width: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* Product hierarchy: keep the overview operational and let detail pages carry the depth. */
+.intro { min-height: 250px; padding: 54px 0 34px; }
+.intro h1 { font-size: clamp(44px, 5.2vw, 70px); line-height: .96; }
+.balance-panel { background: rgba(248, 249, 245, .46); padding-top: 26px; }
+.live-account .hero-balance { font-size: clamp(45px, 5.2vw, 70px); }
+.balance-head { padding-bottom: 26px; }
+.balance-actions { flex-wrap: wrap; justify-content: flex-end; }
+.balance-actions .button { min-width: 108px; }
+.metrics-row { background: rgba(233, 236, 229, .52); }
+.metrics-row > div { padding-top: 18px; padding-bottom: 19px; }
+/* Positions preview lived on Overview until the IA restructure — replaced by the compact
+   portfolio-summary line that links out to /portfolio and /positions. Rules retired. */
+
+/* Cross-chain bridge modal. Compact quote card, step progress, deposit-address panel — kept
+   inside Sotto's chrome so the flow does not leave the app. */
+.bridge-open { margin-top: 16px; width: 100%; }
+.bridge-quote { border: 1px solid var(--line); background: var(--paper); padding: 14px 16px; margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+.bridge-quote div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font: 500 11px "DM Mono", monospace; color: var(--muted); }
+.bridge-quote strong { color: var(--ink); font-weight: 500; }
+.bridge-destination { margin-top: 14px; padding: 12px 14px; background: #edf0e9; border: 1px solid #d0d6c9; }
+.bridge-destination span { display: block; font: 500 9px "DM Mono", monospace; color: var(--muted); letter-spacing: 1.2px; margin-bottom: 6px; }
+.bridge-destination code { display: block; font: 500 11px "DM Mono", monospace; color: var(--ink); word-break: break-all; }
+.bridge-status { margin-top: 20px; }
+.bridge-progress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+.bridge-progress-step { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); background: var(--paper); font-size: 10px; color: var(--muted); }
+.bridge-progress-step.current { border-color: var(--ink); color: var(--ink); }
+.bridge-progress-step.done { background: #dfe9d9; border-color: #b6c9ac; color: #294533; }
+.bridge-progress-step span { font: 500 9px "DM Mono", monospace; letter-spacing: 1px; }
+.bridge-progress-step b { font-size: 11px; font-weight: 700; letter-spacing: 0; }
+.bridge-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; margin: 0 0 16px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.bridge-facts div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font: 500 10px "DM Mono", monospace; }
+.bridge-facts dt { color: var(--muted); }
+.bridge-facts dd { margin: 0; color: var(--ink); }
+.bridge-facts code, .bridge-facts a { font: 500 10px "DM Mono", monospace; color: var(--ink); }
+.bridge-explainer { color: var(--muted); font-size: 12px; line-height: 1.55; margin: 10px 0 14px; }
+.bridge-success { color: #294533; font-weight: 600; }
+.bridge-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.activity-bar { margin-top: 0; }
+.page-intro { padding: 58px 0 42px; }
+.page-intro h1 { font-size: clamp(44px, 5.2vw, 70px); }
+.section { padding: 52px 0 66px; }
+.allocation-layout { gap: 30px; }
+.allocation-summary { padding-left: 30px; }
+.position-header, .position-row { grid-template-columns: minmax(145px, 1.55fr) .55fr .8fr .8fr 1fr 74px; gap: 14px; }
+.position-row { min-height: 84px; }
+.position-entry { background: rgba(248, 249, 245, .35); }
+.vault-facts { padding-left: 44px; padding-bottom: 16px; }
+.dedicated-activity { padding-top: 38px; }
+.activity-filters { margin-bottom: 20px; }
+.activity-row { min-height: 68px; }
+.activity-icon { background: #e7ebe5; }
+.activity-detail dd { max-width: 62%; }
+.home-view .balance-panel,
+.home-view .overview-positions,
+.home-view .activity-bar { display: none; }
+.home-view .intro { min-height: 450px; padding: 112px 0 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 27px; border-bottom: 1px solid var(--line); }
+.home-view .intro > div { display: grid; justify-items: center; gap: 2px; }
+.home-view .intro .eyebrow { margin-bottom: 19px; color: #52705e; }
+.home-view .intro h1 { max-width: 860px; font-size: clamp(52px, 7vw, 92px); line-height: .9; }
+.home-view .intro-copy { width: min(480px, 100%); margin: 0; color: #59645c; font-size: 14px; line-height: 1.7; }
+.hero-entry { display: inline-flex; align-items: center; gap: 10px; margin-top: 5px; padding: 0 0 9px; border: 0; border-bottom: 1px solid var(--ink); background: transparent; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.hero-entry svg { transition: transform .18s ease; }
+.hero-entry:hover svg { transform: translateY(3px); }
+.docs-bar { padding: 54px 0 72px; border-bottom: 1px solid var(--line); }
+.docs-bar-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.docs-bar-head h2 { margin: 0; font-size: clamp(25px, 3vw, 34px); font-weight: 500; }
+.docs-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+.docs-grid article { min-height: 210px; padding: 27px 28px 20px 0; border-right: 1px solid var(--line); }
+.docs-grid article:not(:first-child) { padding-left: 28px; }
+.docs-grid article:last-child { border-right: 0; }
+.docs-index { color: #52705e; font: 500 10px "DM Mono", monospace; }
+.docs-grid h3 { margin: 46px 0 9px; font-size: 14px; font-weight: 700; }
+.docs-grid p { max-width: 290px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+
+@media (max-width: 640px) {
+  .intro { min-height: 290px; padding-top: 40px; }
+  .intro h1, .page-intro h1 { font-size: clamp(42px, 13vw, 60px); }
+  .balance-panel { padding-top: 22px; }
+  .balance-actions { justify-content: stretch; padding-top: 0; }
+  .balance-actions .button { min-width: 0; }
+  .overview-portfolio-summary { flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 18px; }
+  .portfolio-grid { grid-template-columns: 1fr; }
+  .portfolio-grid .token-balance { border-left: none; padding-left: 22px; }
+  .section { padding: 42px 0 52px; }
+  .allocation-summary { padding-left: 0; }
+  .home-view .intro { min-height: 420px; padding: 76px 0 54px; gap: 23px; }
+  .home-view .intro h1 { font-size: clamp(46px, 14vw, 68px); line-height: .92; }
+  .home-view .intro-copy { font-size: 13px; }
+  .home-view .intro-copy br { display: none; }
+  .hero-entry { margin-top: 2px; }
+  .docs-bar { padding: 40px 0 52px; }
+  .docs-bar-head { align-items: flex-start; flex-direction: column; padding-bottom: 22px; }
+  .docs-bar-head .button { min-height: 39px; }
+  .docs-grid { grid-template-columns: 1fr; }
+  .docs-grid article, .docs-grid article:not(:first-child) { min-height: 0; padding: 22px 0; border-right: 0; border-bottom: 1px solid var(--line); }
+  .docs-grid article:last-child { border-bottom: 0; }
+  .docs-grid h3 { margin: 22px 0 8px; }
 }
 
 /* Amount-entry context: what is spendable, and what the pool charges on top. */

@@ -9,99 +9,45 @@
  * Mainnet deployment is accepted and its class hash matches `docs/release.md`.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
 const RPC = process.env.VITE_STARKNET_MAINNET_RPC_URL ?? "https://rpc.starknet.lava.build";
 
+// Load the shared manifest so the frontend and this script cannot drift. Any change to
+// `config/mainnet.json` is checked here on the next run without touching this file.
+const manifestPath = resolve(dirname(fileURLToPath(import.meta.url)), "..", "config", "mainnet.json");
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+
 const EXPECTED = {
-  chainId: "0x534e5f4d41494e",
+  chainId: manifest.network.chainId,
   strk: {
-    address: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    address: manifest.tokens.STRK.address,
     symbol: "STRK",
-    decimals: 18n,
+    decimals: BigInt(manifest.tokens.STRK.decimals),
   },
   usdc: {
-    address: "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+    address: manifest.tokens.USDC.address,
     symbol: "USDC",
-    decimals: 6n,
+    decimals: BigInt(manifest.tokens.USDC.decimals),
   },
   pool: {
-    address: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
-    class: "0x67dddd89d80fedadc06b6f160798f94800a4a70164e5a24301cd0d6076b554d",
+    address: manifest.pool.address,
+    class: manifest.pool.class,
   },
   helper: {
-    address: "0x06277c357edf60e9acbbd5a9efaeb8fcb0d0b0daf1f06801ed94d4247a9b1e6a",
-    class: "0x0424a607bd691a277eba542917d6378a5e059db49829d881b19af3eabb3b8ff4",
+    address: manifest.helper.contract,
+    class: manifest.helper.class,
   },
-  vaults: [
-    // Vesu v2 — canonical Prime curator, STRK
-    {
-      label: "Vesu Prime STRK",
-      address: "0x06d6d2bf905dd199c78f2e421521d8473042737be9f47904e7578536c10f279d",
-      assetLabel: "STRK",
-      assetAddress: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
-      shareDecimals: 18n,
-    },
-    // Vesu v2 — canonical Prime curator, native USDC
-    {
-      label: "Vesu Prime USDC",
-      address: "0x00387e8ddbb1ab36ca08874d9abc702ef4872ad600dcf76b7f240b71d7bc4e65",
-      assetLabel: "native USDC",
-      assetAddress: "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
-      // Every Vesu v2 vToken reports 18 regardless of its asset. See docs/mainnet-addresses.md.
-      shareDecimals: 18n,
-    },
-    // Vesu v2 — Re7 curator variants. Curator risk is different from Prime; they can pause and
-    // adjust fees independently. Each variant is a distinct market thesis (core stables vs
-    // ecosystem tokens vs the big STRK book), and shipping several lets users diversify curator
-    // exposure inside the same helper. Empty / dust vaults from the Vesu API are excluded — the
-    // filter is >= 100k units of the underlying at inclusion time.
-    {
-      label: "Vesu Re7 USDC Core",
-      address: "0x017891114c00b07317b9102adefbad9fd5de40c5616f094ee09fe2fad67191b1",
-      assetLabel: "native USDC",
-      assetAddress: "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
-      shareDecimals: 18n,
-    },
-    {
-      label: "Vesu Re7 USDC Prime",
-      address: "0x06c9d1090d38488b3d08f3ee914ac878d003b8f243f82a9867eb70706a73950b",
-      assetLabel: "native USDC",
-      assetAddress: "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
-      shareDecimals: 18n,
-    },
-    {
-      label: "Vesu Re7 USDC Stable Core",
-      address: "0x00cf3ea1abb06e1f2cba191f10684fc4ce505eba0ed64a847ab6b00ef52e5722",
-      assetLabel: "native USDC",
-      assetAddress: "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
-      shareDecimals: 18n,
-    },
-    {
-      label: "Vesu Re7 STRK",
-      address: "0x04cd290592b3520ced3951d55e2c7f036832f6f9579b4dfe3a80f91ccda2ae8a",
-      assetLabel: "STRK",
-      assetAddress: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
-      shareDecimals: 18n,
-    },
-    // Vesu Reactor vaults — actively managed strategies that allocate across multiple markets.
-    // Different yield source than plain lending (spread capture, dynamic rebalancing), so this
-    // deserves its own kind in the UI. Same 4626 sync interface so the helper drives it unmodified.
-    {
-      label: "Vesu Clearstar USDC Reactor",
-      address: "0x058337c3372ebd55bec9963644c169a62988d695a4f3e242d83d5b706ded22d3",
-      assetLabel: "native USDC",
-      assetAddress: "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
-      shareDecimals: 18n,
-    },
-    // Endur.fi — liquid staking, not lending. Same ERC-4626 sync interface so the helper drives
-    // it unmodified. This adds "stake" to the RFP checklist without a new contract.
-    {
-      label: "Endur xSTRK",
-      address: "0x028d709c875c0ceac3dce7065bec5328186dc89fe254527084d1689910954b0a",
-      assetLabel: "STRK",
-      assetAddress: "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
-      shareDecimals: 18n,
-    },
-  ],
+  vaults: manifest.vaults.map((v) => ({
+    label: `${v.protocol} ${v.label} ${v.underlying}`,
+    address: v.vTokenAddress,
+    assetLabel: v.underlying === "USDC" ? "native USDC" : v.underlying,
+    assetAddress: manifest.tokens[v.underlying].address,
+    shareDecimals: BigInt(v.vTokenDecimals),
+  })),
+
 };
 
 let failures = 0;

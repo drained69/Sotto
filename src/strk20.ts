@@ -2,6 +2,7 @@ import type { WALLET_API } from "@starknet-io/types-js";
 import type { WalletAccountV6 } from "starknet";
 import { num, validateAndParseAddress } from "starknet";
 import { isNotRegistered, isUserRefusal } from "./walletGuards";
+import { loadManifest } from "./manifest";
 
 export const strk20Network = import.meta.env.VITE_STRK20_NETWORK ?? "mainnet";
 
@@ -54,7 +55,85 @@ export async function getPublicBalance(provider: CallCapableProvider, token: str
   return num.toBigInt(lo) | (num.toBigInt(hi ?? 0) << 128n);
 }
 
-type CallCapableProvider = { callContract(call: { contractAddress: string; entrypoint: string; calldata: string[] }): Promise<string[]> };
+export type CallCapableProvider = {
+  callContract(call: { contractAddress: string; entrypoint: string; calldata: string[] }): Promise<string[]>;
+  getBlockNumber?(): Promise<number>;
+};
+
+export type VaultMetadata = {
+  vaultId: string;
+  /** Assets returned by `convert_to_assets` for exactly one whole share. */
+  assetsPerShare: bigint | null;
+  totalAssets: bigint | null;
+  totalSupply: bigint | null;
+  paused: boolean | null;
+  /** Not derivable from ERC-4626 state; reserved for a verified protocol adapter. */
+  utilization: number | null;
+  /** Never inferred from exchange-rate movement or deployment configuration. */
+  apy: number | null;
+  blockNumber: number | null;
+  fetchedAt: string;
+};
+
+function uint256(result: string[]): bigint {
+  return num.toBigInt(result[0] ?? 0) | (num.toBigInt(result[1] ?? 0) << 128n);
+}
+
+/**
+ * Reads the standardized, verifiable portion of a vault's state from Starknet.
+ *
+ * Utilization and APY are deliberately null: neither is defined by ERC-4626, and deriving either
+ * from a single exchange-rate observation would turn an on-chain fact into an unlabeled estimate.
+ */
+export async function getVaultMetadata(
+  provider: CallCapableProvider,
+  vault: YieldVault,
+): Promise<VaultMetadata> {
+  const call = (entrypoint: string, calldata: string[] = []) => provider.callContract({
+    contractAddress: vault.vTokenAddress,
+    entrypoint,
+    calldata,
+  });
+  const optionalUint256 = async (entrypoint: string, calldata: string[] = []) => {
+    try {
+      return uint256(await call(entrypoint, calldata));
+    } catch {
+      return null;
+    }
+  };
+  const optionalPause = async () => {
+    for (const entrypoint of ["is_paused", "paused"]) {
+      try {
+        const [value] = await call(entrypoint);
+        return num.toBigInt(value) !== 0n;
+      } catch {
+        // Pause entrypoints are protocol-specific; absence means unknown, not active.
+      }
+    }
+    return null;
+  };
+
+  const oneShare = 10n ** BigInt(vault.vTokenDecimals);
+  const [assetsPerShare, totalAssets, totalSupply, paused, blockNumber] = await Promise.all([
+    optionalUint256("convert_to_assets", [num.toHex(oneShare), "0x0"]),
+    optionalUint256("total_assets"),
+    optionalUint256("total_supply"),
+    optionalPause(),
+    provider.getBlockNumber?.().catch(() => null) ?? Promise.resolve(null),
+  ]);
+
+  return {
+    vaultId: vault.id,
+    assetsPerShare,
+    totalAssets,
+    totalSupply,
+    paused,
+    utilization: null,
+    apy: null,
+    blockNumber,
+    fetchedAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Reads the pool's flat per-transaction fee.
@@ -112,18 +191,6 @@ export type YieldVault = {
  */
 export type VesuVault = YieldVault;
 
-type YieldEnv = {
-  vaults: Array<{
-    id?: string;
-    protocol?: string;
-    label?: string;
-    kind?: "lend" | "stake" | "reactor";
-    underlying?: string;
-    vTokenAddress?: string;
-    vTokenDecimals?: number;
-  }>;
-};
-
 function envAddress(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -144,39 +211,60 @@ export const vesuHelperAddress = envAddress(import.meta.env.VITE_VESU_LENDING_HE
 export const yieldHelperAddress = vesuHelperAddress;
 
 /**
- * Parse the allowlist of vaults the frontend can drive.
+ * The vault allowlist the frontend can drive.
  *
- * Fail-closed on every field: a malformed entry is dropped rather than degraded. Env var name is
- * `VITE_YIELD_VAULTS` (new); `VITE_VESU_VAULTS` is still read for backward compatibility.
+ * Sourced from `config/{network}.json` at build time — the manifest is the single reviewable place
+ * that lists every address a user's funds can reach through Sotto. Legacy env vars
+ * (`VITE_YIELD_VAULTS`, `VITE_VESU_VAULTS`) are still read as an override for one-off deployments
+ * that need to test a vault before it lands in the versioned manifest.
  */
 export function getYieldVaults(): YieldVault[] {
   if (!yieldHelperAddress) return [];
-  const raw = import.meta.env.VITE_YIELD_VAULTS ?? import.meta.env.VITE_VESU_VAULTS;
-  if (!raw) return [];
-  try {
-    const config = JSON.parse(raw) as YieldEnv;
-    if (!Array.isArray(config.vaults)) return [];
-    return config.vaults.flatMap((vault, index) => {
-      const vTokenAddress = envAddress(vault.vTokenAddress);
-      if (!vTokenAddress || !vault.label) return [];
-      if (!vault.underlying || !(vault.underlying in TOKENS)) return [];
-      // Fail closed on share decimals: they must be read from the vToken's own `decimals()`
-      // and written into config per vault. Inheriting the underlying's decimals is wrong for
-      // every Vesu v2 vUSDC (18-decimal shares over a 6-decimal asset).
-      if (!Number.isInteger(vault.vTokenDecimals) || vault.vTokenDecimals! < 0 || vault.vTokenDecimals! > 32) return [];
-      const kind: YieldVault["kind"] =
-        vault.kind === "stake" || vault.kind === "reactor" ? vault.kind : "lend";
-      const protocol = vault.protocol && typeof vault.protocol === "string" ? vault.protocol : "Vesu";
-      return [{
-        id: vault.id ?? `${protocol.toLowerCase()}-${index}`,
-        protocol,
-        kind,
-        label: vault.label,
-        underlying: vault.underlying as TokenSymbol,
-        vTokenAddress,
-        vTokenDecimals: vault.vTokenDecimals!,
-      }];
+  const override = import.meta.env.VITE_YIELD_VAULTS ?? import.meta.env.VITE_VESU_VAULTS;
+  const raw: RawVault[] = override ? parseVaultConfig(override) : loadManifest(strk20Network).vaults;
+  const out: YieldVault[] = [];
+  raw.forEach((vault, index) => {
+    const vTokenAddress = typeof vault.vTokenAddress === "string" ? envAddress(vault.vTokenAddress) : undefined;
+    if (!vTokenAddress) return;
+    const label = typeof vault.label === "string" ? vault.label : "";
+    if (!label) return;
+    const underlyingKey = typeof vault.underlying === "string" && vault.underlying in TOKENS ? vault.underlying : undefined;
+    if (!underlyingKey) return;
+    const dec = vault.vTokenDecimals;
+    // Fail closed on share decimals: they must be read from the vToken's own `decimals()` and
+    // written into the manifest per vault. Inheriting the underlying's decimals is wrong for every
+    // Vesu v2 vUSDC (18-decimal shares over a 6-decimal asset).
+    if (typeof dec !== "number" || !Number.isInteger(dec) || dec < 0 || dec > 32) return;
+    const kind: YieldVault["kind"] =
+      vault.kind === "stake" || vault.kind === "reactor" ? vault.kind : "lend";
+    const protocol = typeof vault.protocol === "string" && vault.protocol ? vault.protocol : "Vesu";
+    out.push({
+      id: `${protocol.toLowerCase()}-${index}`,
+      protocol,
+      kind,
+      label,
+      underlying: underlyingKey as TokenSymbol,
+      vTokenAddress,
+      vTokenDecimals: dec,
     });
+  });
+  return out;
+}
+
+type RawVault = {
+  protocol?: unknown;
+  label?: unknown;
+  kind?: unknown;
+  underlying?: unknown;
+  vTokenAddress?: unknown;
+  vTokenDecimals?: unknown;
+};
+
+/** Best-effort parse of a legacy `VITE_YIELD_VAULTS` env override. */
+function parseVaultConfig(raw: string): RawVault[] {
+  try {
+    const parsed = JSON.parse(raw) as { vaults?: unknown };
+    return Array.isArray(parsed.vaults) ? (parsed.vaults as RawVault[]) : [];
   } catch {
     return [];
   }
@@ -282,7 +370,21 @@ export async function getShieldedBalances(wallet: WalletAccountV6) {
 }
 
 export function parseShieldedBalances(raw: unknown): Map<string, bigint> {
-  const balances = raw && typeof raw === "object" && "value" in raw ? (raw as { value: unknown }).value : raw;
+  const unwrapped = raw && typeof raw === "object" && "value" in raw ? (raw as { value: unknown }).value : raw;
+  const balances = unwrapped && typeof unwrapped === "object" && "balances" in unwrapped
+    ? (unwrapped as { balances: unknown }).balances
+    : unwrapped;
+  if (balances && typeof balances === "object" && !Array.isArray(balances)) {
+    return new Map(
+      Object.entries(balances).flatMap(([token, balance]) => {
+        try {
+          return [[num.toHex(token).toLowerCase(), num.toBigInt(balance as string)] as [string, bigint]];
+        } catch {
+          return [];
+        }
+      }),
+    );
+  }
   if (!Array.isArray(balances)) return new Map();
   return new Map(
     balances.flatMap((entry) => {

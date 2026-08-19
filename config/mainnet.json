@@ -1,0 +1,106 @@
+{
+  "$schema": "./schema.json",
+  "network": {
+    "name": "mainnet",
+    "chainId": "0x534e5f4d41494e",
+    "explorer": "https://voyager.online"
+  },
+  "pool": {
+    "address": "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+    "class": "0x67dddd89d80fedadc06b6f160798f94800a4a70164e5a24301cd0d6076b554d",
+    "verifiedOn": "2026-08-17"
+  },
+  "tokens": {
+    "STRK": {
+      "address": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "decimals": 18,
+      "verifiedOn": "2026-08-17"
+    },
+    "USDC": {
+      "address": "0x033068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb",
+      "decimals": 6,
+      "verifiedOn": "2026-08-17",
+      "note": "Circle native USDC. Not the bridged USDC.e (0x053c…368a8)."
+    }
+  },
+  "vaults": [
+    {
+      "protocol": "Vesu",
+      "label": "Prime",
+      "kind": "lend",
+      "underlying": "STRK",
+      "vTokenAddress": "0x06d6d2bf905dd199c78f2e421521d8473042737be9f47904e7578536c10f279d",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Vesu",
+      "label": "Prime",
+      "kind": "lend",
+      "underlying": "USDC",
+      "vTokenAddress": "0x00387e8ddbb1ab36ca08874d9abc702ef4872ad600dcf76b7f240b71d7bc4e65",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Vesu",
+      "label": "Re7 Core",
+      "kind": "lend",
+      "underlying": "USDC",
+      "vTokenAddress": "0x017891114c00b07317b9102adefbad9fd5de40c5616f094ee09fe2fad67191b1",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Vesu",
+      "label": "Re7 Prime",
+      "kind": "lend",
+      "underlying": "USDC",
+      "vTokenAddress": "0x06c9d1090d38488b3d08f3ee914ac878d003b8f243f82a9867eb70706a73950b",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Vesu",
+      "label": "Re7 Stable Core",
+      "kind": "lend",
+      "underlying": "USDC",
+      "vTokenAddress": "0x00cf3ea1abb06e1f2cba191f10684fc4ce505eba0ed64a847ab6b00ef52e5722",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Vesu",
+      "label": "Re7",
+      "kind": "lend",
+      "underlying": "STRK",
+      "vTokenAddress": "0x04cd290592b3520ced3951d55e2c7f036832f6f9579b4dfe3a80f91ccda2ae8a",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Vesu",
+      "label": "Clearstar Reactor",
+      "kind": "reactor",
+      "underlying": "USDC",
+      "vTokenAddress": "0x058337c3372ebd55bec9963644c169a62988d695a4f3e242d83d5b706ded22d3",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    },
+    {
+      "protocol": "Endur",
+      "label": "Liquid staking",
+      "kind": "stake",
+      "underlying": "STRK",
+      "vTokenAddress": "0x028d709c875c0ceac3dce7065bec5328186dc89fe254527084d1689910954b0a",
+      "vTokenDecimals": 18,
+      "verifiedOn": "2026-08-18"
+    }
+  ],
+  "helper": {
+    "class": "0x0424a607bd691a277eba542917d6378a5e059db49829d881b19af3eabb3b8ff4",
+    "contract": "0x06277c357edf60e9acbbd5a9efaeb8fcb0d0b0daf1f06801ed94d4247a9b1e6a",
+    "deployedOn": "2026-08-18",
+    "note": "Sotto's generic ERC-4626 anonymizer. Drives every vault above via the same three-action STRK20 sequence: withdraw underlying to helper → transfer OPEN vToken note to user → invoke privacy_invoke on helper."
+  }
+}

@@ -55,6 +55,7 @@ Sotto is intentionally fail-closed. If a token, lending helper, vault, bridge, o
 
 - Displays STRK20 balances returned by the connected wallet.
 - Separates liquid shielded assets from recognized yield-position tokens.
+- Shows when wallet note discovery and public vault reads were last refreshed.
 - Allows balances to be hidden in the interface.
 - Reports the connected network, Wallet API versions, route availability, and synchronization state.
 - Provides explicit empty, loading, unsupported, and error states.
@@ -83,6 +84,10 @@ Sotto is intentionally fail-closed. If a token, lending helper, vault, bridge, o
 - Converts shielded underlying assets into private vToken notes through an app-specific anonymizer.
 - Dry-runs the complete STRK20 action list before requesting the final proof and submission.
 - Recognizes configured vToken balances as private yield positions in the dashboard.
+- Reads standardized ERC-4626 totals and share-to-asset exchange rates directly from Starknet RPC.
+- Keeps public vault state separate from private STRK20 note balances; RPC reads never imply ownership.
+- Shows pause state only when the vault exposes a verified pause entrypoint; otherwise it is unavailable.
+- Keeps APY and utilization unavailable until a verified protocol-specific source is integrated.
 - Keeps each lending, staking, or allocation route disabled unless its helper, contracts, and market configuration pass validation.
 - Provides the product surface for adding more protocols without exposing a public aggregate portfolio.
 
@@ -109,7 +114,8 @@ Sotto is intentionally fail-closed. If a token, lending helper, vault, bridge, o
 | Ethereum, Base, and Arbitrum deposits | Interface only | Source-chain routes are shown but disabled until Privacy Bridge infrastructure is deployed and tested. |
 | Fresh-wallet withdrawal guidance | Implemented | The withdrawal flow recommends an unused destination address, while the user remains responsible for address selection. |
 | Historical portfolio indexing | Not included | The activity panel only contains transactions submitted in the current session. |
-| Live APY data | Not included | Sotto does not render a rate unless a verified market-data source is integrated. |
+| Live vault metadata | Partial | ERC-4626 exchange rate and totals are read from Starknet RPC. Pause state is shown when the vault exposes it; utilization remains unavailable without a verified protocol adapter. |
+| Live APY data | Not included | Sotto displays “APY unavailable” rather than rendering a configured, estimated, or stale rate. |
 
 ## How Sotto works
 
