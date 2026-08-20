@@ -59,6 +59,7 @@ import { useWallet } from "./useWallet";
 import * as Layerswap from "./layerswap";
 import * as EvmWallet from "./evmWallet";
 import * as CrossChain from "./crossChainDeposit";
+import { activityKey, loadActivity, saveActivity, type StoredActivity } from "./activityStore";
 
 type Modal =
   | "deposit"
@@ -74,7 +75,7 @@ type Toast = { title: string; detail: string; type: "ok" | "error" } | null;
 type ViewName = "overview" | "portfolio" | "positions" | "activity";
 const VIEW_NAMES: ViewName[] = ["overview", "portfolio", "positions", "activity"];
 
-type SessionTx = { hash: string; label: string; status: string; time: string; amount?: string; destination?: string };
+type SessionTx = StoredActivity;
 type ActivityItem = {
   id: string;
   type: "Deposit" | "Yield" | "Transfer" | "Withdraw";
@@ -82,7 +83,7 @@ type ActivityItem = {
   detail: string;
   amount: string;
   time: string;
-  status: "Complete" | "Private";
+  status: "Complete" | "Confirming" | "Reverted";
 };
 type ActivityRecord = ActivityItem & { hash?: string };
 
@@ -571,6 +572,9 @@ function App() {
   const syncInFlight = useRef<Promise<void> | null>(null);
   /** `address:chainId` last auto-synced, so one prompt is raised per account+network. */
   const lastSyncedIdentity = useRef("");
+  const activityIdentity = wallet.address && wallet.chainId
+    ? activityKey(wallet.address, wallet.chainId)
+    : "";
 
   const knownBalances = [...balances.entries()]
     .map(([address, balance]) => {
@@ -875,6 +879,61 @@ function App() {
     );
   }
 
+  /**
+   * Confirmation summary rendered above the withdraw / transfer CTA.
+   *
+   * Exists specifically to prevent the mis-paste failure mode: a user typed 15 STRK to a
+   * `0x4c669e47…` address they turned out not to control, and the funds landed at that address
+   * exactly as instructed. The wallet's own confirmation shows the same thing, but only after
+   * the user has already crossed the "I approve this" mental threshold. Sotto now surfaces the
+   * full recipient string in monospace ONE step earlier, so a wrong address is caught before the
+   * proving prompt appears.
+   *
+   * The provider-account comparison also warns when the recipient equals the connected wallet
+   * (that trades privacy for safety) or when the recipient has no on-chain history (fresh
+   * address is normal, but "genuinely new" is worth naming).
+   */
+  function WithdrawSummary({ token, amount, recipient }: { token: TokenSymbol; amount: string; recipient: string }) {
+    const trimmed = recipient.trim();
+    if (!trimmed) return null;
+    let parsed: string | null = null;
+    try {
+      // Best-effort parse. viem's isAddress is EVM-only; Starknet uses a wider space, so we rely
+      // on the same validator the transactional code uses via a cheap regex first.
+      if (!/^0x[0-9a-fA-F]{1,64}$/.test(trimmed)) throw new Error("bad shape");
+      parsed = trimmed.toLowerCase();
+    } catch {
+      return (
+        <div className="withdraw-summary withdraw-warn">
+          <strong>Recipient doesn't look like a Starknet address</strong>
+          <span>Starknet addresses are 0x-prefixed hex, up to 64 characters. Double-check before submitting.</span>
+        </div>
+      );
+    }
+    const isConnectedWallet = wallet.address ? parsed === wallet.address.toLowerCase() : false;
+    return (
+      <div className="withdraw-summary">
+        <div className="withdraw-summary-row">
+          <span>You send</span>
+          <b>{amount || "0"} {token}</b>
+        </div>
+        <div className="withdraw-summary-row">
+          <span>Recipient</span>
+          <code>{trimmed}</code>
+        </div>
+        <div className="withdraw-summary-row">
+          <span>Signed by wallet</span>
+          <b>{isConnectedWallet ? "Same as connected wallet" : "Different address"}</b>
+        </div>
+        {!isConnectedWallet && (
+          <p className="withdraw-summary-note">
+            This address is <em>not</em> your connected wallet. If you paste an address you don't control, the funds land there and are unrecoverable. Verify character-by-character before signing.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   // Auto-sync exactly once per account+network. Reading shielded balances raises its own wallet
   // approval prompt, so this must key on stable primitives: `wallet.account` is a fresh object on
   // every attach, and depending on it re-fired the read — and the prompt — on every wallet event.
@@ -897,24 +956,44 @@ function App() {
     void loadVaultMetadata();
   }, [wallet.address, wallet.chainId, syncBalancesOnConnect, loadPoolFee, loadPublicBalances, loadVaultMetadata]);
 
-  async function confirmTransaction(hash: string, label: string, amount?: string, destination?: string) {
-    setTransactions((items) => [
-      { hash, label, status: "Confirming", time: "Now", amount, destination },
-      ...items,
-    ]);
-    const receipt = await wallet.account!.provider.waitForTransaction(hash, {
-      retries: 400,
-      retryInterval: 3000,
+  useEffect(() => {
+    setTransactions(activityIdentity ? loadActivity(window.localStorage, activityIdentity) : []);
+  }, [activityIdentity]);
+
+  function updateTransactions(update: (items: SessionTx[]) => SessionTx[]) {
+    setTransactions((items) => {
+      const next = update(items);
+      if (activityIdentity) saveActivity(window.localStorage, activityIdentity, next);
+      return next;
     });
-    const succeeded = receipt.isSuccess();
-    setTransactions((items) =>
-      items.map((item) =>
-        item.hash === hash
-          ? { ...item, status: transactionStatus(succeeded) }
-          : item,
-      ),
-    );
-    if (!succeeded) throw revertedTransactionError();
+  }
+
+  async function confirmTransaction(hash: string, label: string, amount?: string, destination?: string) {
+    const category = label.toLowerCase().includes("withdraw")
+      ? "Withdraw"
+      : label.toLowerCase().includes("lend") || label.toLowerCase().includes("redeem")
+        ? "Yield"
+        : label.toLowerCase().includes("transfer")
+          ? "Transfer"
+          : "Deposit";
+    updateTransactions((items) => [
+      { hash, label, category, status: "Confirming", createdAt: new Date().toISOString(), amount, destination },
+      ...items.filter((item) => item.hash !== hash),
+    ]);
+    try {
+      const receipt = await wallet.account!.provider.waitForTransaction(hash, {
+        retries: 400,
+        retryInterval: 3000,
+      });
+      const succeeded = receipt.isSuccess();
+      updateTransactions((items) => items.map((item) =>
+        item.hash === hash ? { ...item, status: transactionStatus(succeeded) as "Confirmed" | "Reverted" } : item,
+      ));
+      if (!succeeded) throw revertedTransactionError();
+    } catch (error) {
+      if (error instanceof Error && error.message === revertedTransactionError().message) throw error;
+      throw error;
+    }
   }
 
   async function requireLiveWallet() {
@@ -939,10 +1018,16 @@ function App() {
     // externally, funds land in their Starknet wallet, and this shield spends that public
     // balance. The source chain field is only a routing hint for the bridge step — the shield
     // itself is always Starknet-native, so nothing needs to be gated on chain choice here.
-    if (kind === "withdraw" && !recipient.trim()) {
+    //
+    // For withdrawals, the recipient is HARD-LOCKED to the connected wallet address here.
+    // Even if a future UI change re-introduced a recipient field, this line makes it impossible
+    // for that field's value to reach the on-chain call. The modal's own destination lock is
+    // presentation; this is enforcement.
+    const withdrawRecipient = wallet.address ?? "";
+    if (kind === "withdraw" && !withdrawRecipient) {
       notify({
-        title: "Recipient required",
-        detail: "Enter a fresh Starknet address.",
+        title: "Wallet required",
+        detail: "Connect a Starknet wallet — withdrawals send only to your connected address.",
         type: "error",
       });
       return;
@@ -952,7 +1037,7 @@ function App() {
       const response =
         kind === "deposit"
           ? await shield(wallet.account!, token, amount)
-          : await withdraw(wallet.account!, token, amount, recipient.trim());
+          : await withdraw(wallet.account!, token, amount, withdrawRecipient);
       const label =
         kind === "deposit"
           ? `Shield ${amount} ${token}`
@@ -967,7 +1052,7 @@ function App() {
         response.transaction_hash,
         label,
         `${amount} ${token}`,
-        kind === "withdraw" ? recipient.trim() : undefined,
+        kind === "withdraw" ? withdrawRecipient : undefined,
       );
       await syncBalances(false);
       notify({
@@ -1132,13 +1217,7 @@ function App() {
   const activityRecords: ActivityRecord[] = [
     ...transactions.map((item) => ({
       id: item.hash,
-      type: item.label.toLowerCase().includes("withdraw")
-        ? "Withdraw" as const
-        : item.label.toLowerCase().includes("lend") || item.label.toLowerCase().includes("yield")
-          ? "Yield" as const
-          : item.label.toLowerCase().includes("transfer")
-            ? "Transfer" as const
-            : "Deposit" as const,
+      type: item.category,
       title: item.label,
       detail: item.destination
         ? `To ${item.destination.slice(0, 8)}…${item.destination.slice(-4)}`
@@ -1146,8 +1225,8 @@ function App() {
           ? "Private position allocation · Starknet"
           : "Private account movement · Starknet",
       amount: item.amount ?? "",
-      time: item.time,
-      status: item.status === "Confirming" ? "Private" as const : "Complete" as const,
+      time: new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt)),
+      status: item.status === "Confirmed" ? "Complete" as const : item.status,
       hash: item.hash,
     })),
   ];
@@ -1165,7 +1244,13 @@ function App() {
    * should render normally. Used by both Overview (as a compact banner) and Portfolio (as the
    * main placeholder). Keeps the many status strings in one place.
    */
-  function BalanceStateNotice() {
+  /**
+   * Plain function (not a component) that returns either a JSX notice or `null` so callers can
+   * meaningfully branch on presence — invoking a component always yields a truthy React element
+   * even when its body returns null, which is exactly how the Portfolio "no assets" empty state
+   * silently disappeared.
+   */
+  function balanceStateNotice(): React.ReactNode {
     if (wallet.restoring)
       return (
         <div className="account-empty">
@@ -1405,7 +1490,7 @@ function App() {
               summary linking to the Portfolio page for the full asset breakdown. The detailed
               per-token grid moved to Portfolio so this page can answer "what do I have?" quickly. */}
           {(() => {
-            const notice = <BalanceStateNotice />;
+            const notice = balanceStateNotice();
             if (notice) return <div className="live-balances live-balances-compact">{notice}</div>;
             if (!knownBalances.length)
               return (
@@ -1502,7 +1587,7 @@ function App() {
             </div>
             <div className="live-balances portfolio-grid">
               {(() => {
-                const notice = <BalanceStateNotice />;
+                const notice = balanceStateNotice();
                 if (notice) return notice;
                  if (balanceState !== "live" && balanceState !== "loading" && !liquidBalances.length)
                    return (
@@ -1549,11 +1634,11 @@ function App() {
           <h1>Where your capital<br /><span>is working.</span></h1>
           <p className="page-intro-copy">Active lending and staking positions routed through Sotto's private execution layer.</p>
         </section>
-        <section className="section" id="positions">
-          <div className="section-head">
+        <section className="section positions-section" id="positions">
+          <div className="section-head positions-head">
             <div>
               <p className="eyebrow">ON-CHAIN POSITIONS</p>
-              <h2>Private yield</h2>
+              <h2>Active positions</h2>
               <p className="section-subtitle">
                 Shares are wallet-reported STRK20 notes. Exchange rates and vault state are read separately from Starknet RPC; unavailable protocol metrics are never estimated.
               </p>
@@ -1572,16 +1657,13 @@ function App() {
               <span>Open position</span>
             </button>
           </div>
-          <div className="allocation-layout">
-            <div className="allocation-list">
-              <div className="position-header" aria-hidden="true">
-                <span>PROTOCOL</span>
-                <span>ASSET</span>
-                <span>APY</span>
-                <span>SHARES</span>
-                <span className="align-right">POSITION VALUE</span>
-                <span />
-              </div>
+          <div className="position-overview-strip">
+            <div><span>ACTIVE POSITIONS</span><strong>{positionBalances.length}</strong><small>Wallet-verified notes</small></div>
+            <div><span>PROTOCOLS</span><strong>{new Set(positionBalances.map((entry) => entry.vault?.protocol).filter(Boolean)).size}</strong><small>Current exposure</small></div>
+            <div><span>ACCOUNT</span><strong className="status-strong"><i />{accountStatus}</strong><small>{wallet.networkName}</small></div>
+          </div>
+          <div className="allocation-layout positions-layout">
+            <div className="allocation-list position-card-list">
               {positionBalances.length ? (
                vaults.filter((vault) => positionBalances.some((item) => item.address === normalizeAddress(vault.vTokenAddress))).map((vault) => {
                   const entry = positionBalances.find(
@@ -1593,46 +1675,23 @@ function App() {
                     ? metadata.assetsPerShare * entry.balance / 10n ** BigInt(vault.vTokenDecimals)
                     : null;
                   return (
-                    <article className="position-entry" key={vault.id}>
-                    <div className="position-row">
+                    <article className="position-entry position-card" key={vault.id}>
+                    <div className="position-card-main">
                       <div className="position-name">
                         <span className="protocol-mark">{vault.protocol.slice(0, 1)}</span>
                         <div>
-                          <strong>{vault.protocol}</strong>
-                          <span>{vault.label}</span>
+                          <span className="position-type">{vault.kind === "stake" ? "LIQUID STAKING" : vault.kind === "reactor" ? "MANAGED STRATEGY" : "LENDING"}</span>
+                          <strong>{vault.protocol} · {vault.label}</strong>
+                          <span>{vault.underlying} strategy</span>
                         </div>
                       </div>
-                      <div className="position-stat">
-                        <span>UNDERLYING</span>
-                        <strong>{vault.underlying}</strong>
-                      </div>
-                      <div className="position-stat">
-                        <span>CURRENT APY</span>
-                        <strong>APY unavailable</strong>
-                      </div>
-                      <div className="position-stat">
-                        <span>SHARES</span>
-                        <strong>
-                          {entry
-                            ? formatTokenAmount(
-                                entry.balance,
-                                vault.vTokenDecimals,
-                              )
-                            : "0"}
-                        </strong>
-                      </div>
-                      <div className="position-value">
-                        <strong>
-                          {entry
-                            ? underlyingValue === null
-                              ? "Value unavailable"
-                              : `${formatTokenAmount(underlyingValue, TOKENS[vault.underlying].decimals)} ${vault.underlying}`
-                            : `0 ${vault.underlying}`}
-                        </strong>
-                        <span>{underlyingValue === null ? "No verified exchange rate" : "On-chain exchange rate"}</span>
+                      <div className="position-value position-primary-value">
+                        <span>POSITION VALUE</span>
+                        <strong>{underlyingValue === null ? "Unavailable" : `${formatTokenAmount(underlyingValue, TOKENS[vault.underlying].decimals)} ${vault.underlying}`}</strong>
+                        <small>{underlyingValue === null ? "Awaiting verified exchange rate" : "Calculated from on-chain exchange rate"}</small>
                       </div>
                       <button
-                        className="button text-button"
+                        className="button secondary position-close"
                         disabled={!entry}
                         onClick={() => {
                           setSelectedVault(vault);
@@ -1648,15 +1707,15 @@ function App() {
                         }}
                       >
                         <ArrowUpRight size={16} />
-                        <span>Close</span>
+                        <span>Redeem</span>
                       </button>
                     </div>
-                    <dl className="vault-facts">
+                    <dl className="vault-facts position-facts">
+                      <div><dt>Shares</dt><dd>{entry ? formatTokenAmount(entry.balance, vault.vTokenDecimals) : "0"} v{vault.underlying}</dd></div>
+                      <div><dt>Yield</dt><dd>{metadata?.apy === null || metadata?.apy === undefined ? "Not reported" : `${metadata.apy.toFixed(2)}% APY`}</dd></div>
                       <div><dt>Exchange rate</dt><dd>{metadata?.assetsPerShare === null || metadata?.assetsPerShare === undefined ? "Unavailable" : `1 share = ${formatTokenAmount(metadata.assetsPerShare, TOKENS[vault.underlying].decimals)} ${vault.underlying}`}</dd></div>
-                      <div><dt>Utilization</dt><dd>{metadata?.utilization === null || metadata?.utilization === undefined ? "Unavailable" : `${metadata.utilization.toFixed(2)}%`}</dd></div>
-                      <div><dt>Pause state</dt><dd>{metadata?.paused === null || metadata?.paused === undefined ? "Unavailable" : metadata.paused ? "Paused" : "Active"}</dd></div>
-                      <div><dt>Vault state</dt><dd>{metadata ? `Starknet RPC${metadata.blockNumber === null ? "" : ` · block ${metadata.blockNumber}`}` : vaultDataState === "loading" ? "Reading…" : "Unavailable"}</dd></div>
-                      <div><dt>Vault totals</dt><dd>{metadata?.totalAssets === null || metadata?.totalAssets === undefined || metadata?.totalSupply === null || metadata?.totalSupply === undefined ? "Unavailable" : "Available on-chain"}</dd></div>
+                      <div><dt>Status</dt><dd className={metadata?.paused ? "position-paused" : "position-active"}>{metadata?.paused === true ? "Paused" : metadata?.paused === false ? "Active" : "Unverified"}</dd></div>
+                      <div><dt>RPC state</dt><dd>{metadata ? `Verified${metadata.blockNumber === null ? "" : ` · block ${metadata.blockNumber}`}` : vaultDataState === "loading" ? "Reading…" : "Unavailable"}</dd></div>
                     </dl>
                     </article>
                   );
@@ -1673,14 +1732,14 @@ function App() {
                 </div>
               )}
             </div>
-            <aside className="allocation-summary route-status">
+            <aside className="allocation-summary route-status positions-route">
               <div className="shield-orbit">
                 <Fingerprint />
               </div>
               <p className="eyebrow">EXECUTION ROUTE</p>
-              <h3>Wallet → STRK20 → helper → DeFi venue</h3>
+              <h3>Private ownership.<br />Public execution boundary.</h3>
               <p>
-                The helper call and amount are public. The initiating wallet and the private share owner are hidden. One helper, many venues — each vault sees only the helper as its counterparty, not you.
+                Your wallet holds the private position note. The helper call and output amount remain public, while the vault sees the Sotto helper rather than your account as its counterparty.
               </p>
               <dl>
                 <div>
@@ -1932,17 +1991,23 @@ function App() {
       )}
       {modal === "withdraw" && (
         <ModalShell
-          title="Withdraw to fresh wallet"
+          title="Withdraw to your wallet"
           eyebrow="STRK20 WITHDRAWAL"
           onClose={() => setModal(null)}
         >
+          {/* Withdraw is HARD-LOCKED to the connected wallet. The prior "fresh Starknet address"
+              flow let a user paste a string they didn't control, and 15 STRK went to an unowned
+              address as a result. Privacy hygiene (a fresh unlinked destination) is real but
+              second-order; guaranteed recoverability is what a user expects when they hit
+              Withdraw. Users who genuinely want to withdraw to a different address can transfer
+              privately to that address first, then withdraw from there — a two-step flow that
+              keeps the wallet's key custody honest. */}
           <div className="privacy-callout">
             <Fingerprint />
             <p>
               <strong>The withdrawal edge is public</strong>
               <span>
-                Recipient, token, amount and timing are visible. Use a genuinely
-                unused destination to reduce linkage.
+                Recipient, token, amount and timing become visible on chain. Sotto sends withdrawals only to your connected Starknet wallet — an address you provably control.
               </span>
             </p>
           </div>
@@ -1979,29 +2044,20 @@ function App() {
             symbol={token}
             spend={amount}
           />
-          <label className="field">
-            <span>Fresh Starknet address</span>
-            <div className="address-input">
-              <input
-                placeholder="0x…"
-                value={recipient}
-                onChange={(event) => setRecipient(event.target.value)}
-              />
-              <button
-                aria-label="Paste address"
-                onClick={async () =>
-                  setRecipient(await navigator.clipboard.readText())
-                }
-              >
-                <Copy size={17} />
-              </button>
-            </div>
-          </label>
+          <div className="destination-lock">
+            <span>Destination (your connected wallet, locked)</span>
+            <code>{wallet.address ?? "Not connected"}</code>
+          </div>
           <FeeLine />
           <button
             className="button primary modal-cta"
-            disabled={busy}
-            onClick={() => runAssetAction("withdraw")}
+            disabled={busy || !wallet.address}
+            onClick={() => {
+              // Force the recipient to the connected wallet before running the action — this
+              // is the load-bearing safety guarantee, not just a UI convenience.
+              if (wallet.address) setRecipient(wallet.address);
+              void runAssetAction("withdraw");
+            }}
           >
             {busy
               ? "Generating proof…"
@@ -2080,9 +2136,10 @@ function App() {
             </div>
           </label>
           <FeeLine />
+          <WithdrawSummary token={token} amount={amount} recipient={recipient} />
           <button
             className="button primary modal-cta"
-            disabled={busy}
+            disabled={busy || !recipient.trim()}
             onClick={runPrivateTransfer}
           >
             {busy

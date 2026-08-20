@@ -1,9 +1,10 @@
 # Dependencies
 node_modules/
 
-# Frontend build
+# Frontend build / Vite cache
 dist/
 dist-ssr/
+.vite/
 *.local
 
 # Environment — keep public templates only (no secrets in either file)
@@ -24,6 +25,7 @@ pnpm-debug.log*
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+.eslintcache
 
 # Test and coverage output
 coverage/
@@ -31,11 +33,17 @@ coverage/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+/playwright/.auth/
 
 # Scarb / Starknet Foundry
 target/
 .snfoundry_cache/
 snfoundry_trace/
+
+# Local signing material — sncast accounts-file stays outside the repo
+*.pem
+*.key
+**/starknet_open_zeppelin_accounts.json
 
 # OS / editor
 .DS_Store

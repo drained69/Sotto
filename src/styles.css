@@ -22,7 +22,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 a { color: inherit; text-decoration: none; }
 
-.app-shell { min-height: 100vh; }
+.app-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 .topbar { height: 72px; padding: 0 3.5vw; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; position: sticky; top: 0; z-index: 20; background: rgba(241, 242, 237, .94); backdrop-filter: blur(14px); }
 .logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: 0; }
 .logo-mark { width: 26px; height: 26px; border: 2px solid var(--ink); border-radius: 50%; display: grid; place-items: center; transform: rotate(-20deg); }
@@ -36,7 +36,7 @@ a { color: inherit; text-decoration: none; }
 .wallet-button { background: var(--ink); color: white; border-color: var(--ink); }
 .menu-button { display: none; background: none; border: 0; padding: 7px; }
 
-main { width: min(1200px, calc(100% - 7vw)); margin: 0 auto; }
+main { width: min(1200px, calc(100% - 7vw)); margin: 0 auto; flex: 1 0 auto; }
 .intro { min-height: 310px; padding: 68px 0 42px; display: flex; align-items: flex-end; justify-content: space-between; gap: 48px; }
 .eyebrow { font: 500 10px/1.4 "DM Mono", monospace; letter-spacing: 1.7px; margin: 0 0 13px; color: #6e756e; }
 h1, h2, p { margin-top: 0; }
@@ -224,7 +224,7 @@ h1 span { font-family: "Newsreader", serif; font-weight: 400; color: #647169; }
 .privacy-checks svg { width: 14px; color: var(--acid); }
 .privacy-card > button { margin-top: auto; padding: 16px 0 0; border: 0; border-top: 1px solid #525d55; background: transparent; color: white; display: flex; justify-content: space-between; cursor: pointer; font-size: 11px; }
 
-footer { width: min(1200px, calc(100% - 7vw)); margin: 0 auto; min-height: 105px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 10px; }
+footer { width: min(1200px, calc(100% - 7vw)); margin: 0 auto; min-height: 105px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 10px; }
 footer .logo { color: var(--ink); font-size: 16px; }
 footer .logo-mark { width: 22px; height: 22px; }
 footer p { margin: 0; text-align: center; }
@@ -460,6 +460,39 @@ footer a:hover { color: var(--ink); }
 .position-row { min-height: 84px; }
 .position-entry { background: rgba(248, 249, 245, .35); }
 .vault-facts { padding-left: 44px; padding-bottom: 16px; }
+.positions-section { padding-top: 42px; }
+.positions-head { margin-bottom: 24px; }
+.positions-head > div:first-child { max-width: 670px; }
+.position-overview-strip { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 34px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); background: rgba(248, 249, 245, .4); }
+.position-overview-strip > div { min-height: 92px; padding: 18px 22px; display: flex; flex-direction: column; justify-content: center; gap: 5px; border-right: 1px solid var(--line); }
+.position-overview-strip > div:first-child { padding-left: 0; }
+.position-overview-strip > div:last-child { border-right: 0; }
+.position-overview-strip span:not(.status-strong) { color: var(--muted); font: 500 9px "DM Mono", monospace; letter-spacing: 1px; }
+.position-overview-strip strong { font-size: 23px; font-weight: 600; }
+.position-overview-strip small { color: var(--muted); font-size: 9px; }
+.positions-layout { grid-template-columns: minmax(0, 1fr) 260px; gap: 34px; }
+.position-card-list { display: grid; gap: 14px; border-top: 0; }
+.position-card { border: 1px solid var(--line); background: rgba(248, 249, 245, .72); }
+.position-card-main { min-height: 126px; padding: 24px; display: grid; grid-template-columns: minmax(210px, 1.3fr) minmax(180px, .9fr) auto; align-items: center; gap: 28px; }
+.position-card .position-name { align-items: flex-start; }
+.position-card .protocol-mark { width: 42px; height: 42px; background: var(--green); color: var(--acid); }
+.position-card .position-name div { gap: 4px; }
+.position-card .position-name strong { font-size: 15px; }
+.position-type { color: #52705e !important; font: 500 8px "DM Mono", monospace; letter-spacing: 1px; }
+.position-primary-value { text-align: left; gap: 5px; }
+.position-primary-value > span { font: 500 8px "DM Mono", monospace; letter-spacing: 1px; }
+.position-primary-value strong { font-size: 21px; font-weight: 600; }
+.position-primary-value small { color: var(--muted); font-size: 9px; line-height: 1.35; }
+.position-close { min-width: 92px; }
+.position-facts { grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 16px 24px; border-top: 1px solid var(--line); background: rgba(233, 236, 229, .42); gap: 18px; }
+.position-facts div { gap: 6px; }
+.position-facts dd { font-size: 10px; line-height: 1.4; }
+.position-active { color: #356b50; }
+.position-paused { color: #9a3939; }
+.positions-route { min-height: 100%; padding: 12px 0 0 30px; }
+.positions-route .shield-orbit { margin-bottom: 26px; }
+.positions-route h3 { font-size: 18px; line-height: 1.3; }
+.positions-route > p:not(.eyebrow) { max-width: none; }
 .dedicated-activity { padding-top: 38px; }
 .activity-filters { margin-bottom: 20px; }
 .activity-row { min-height: 68px; }
@@ -498,6 +531,20 @@ footer a:hover { color: var(--ink); }
   .portfolio-grid .token-balance { border-left: none; padding-left: 22px; }
   .section { padding: 42px 0 52px; }
   .allocation-summary { padding-left: 0; }
+  .positions-head { flex-direction: column; }
+  .positions-head .text-button { width: auto; padding: 0 13px; font-size: 11px; }
+  .position-overview-strip { grid-template-columns: 1fr 1fr; margin-bottom: 26px; }
+  .position-overview-strip > div { min-height: 78px; padding: 14px; }
+  .position-overview-strip > div:first-child { padding-left: 0; }
+  .position-overview-strip > div:nth-child(2) { border-right: 0; }
+  .position-overview-strip > div:last-child { grid-column: 1 / -1; padding-left: 0; border-top: 1px solid var(--line); }
+  .position-card-main { min-height: 0; padding: 20px; grid-template-columns: 1fr auto; gap: 20px 12px; }
+  .position-card .position-name { grid-column: 1 / -1; }
+  .position-primary-value { grid-column: 1; }
+  .position-close { grid-column: 2; width: 43px; min-width: 43px; padding: 0; }
+  .position-close span { display: none; }
+  .position-facts { grid-template-columns: 1fr 1fr; padding: 16px 20px; }
+  .positions-route { padding-left: 0; }
   .home-view .intro { min-height: 420px; padding: 76px 0 54px; gap: 23px; }
   .home-view .intro h1 { font-size: clamp(46px, 14vw, 68px); line-height: .92; }
   .home-view .intro-copy { font-size: 13px; }
@@ -516,6 +563,28 @@ footer a:hover { color: var(--ink); }
 .field-note { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 10px 0 0; font: 500 10px "DM Mono", monospace; color: var(--muted); }
 .field-note b { color: var(--ink); font-weight: 500; }
 .field-note.field-note-warn b { color: #a54a45; }
+
+/* Withdraw / transfer pre-signing confirmation. Full-width, monospace recipient, warning tone
+   when the recipient is not the connected wallet. Kept quiet enough to not shout on every use
+   but present enough that a wrong address is impossible to miss. */
+.recipient-shortcuts { display: flex; gap: 12px; margin: 8px 0 0; }
+.recipient-shortcuts .link-button { font-size: 10px; letter-spacing: 0; }
+.withdraw-summary { margin: 16px 0 4px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--line); }
+.withdraw-summary-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; font: 500 11px "DM Mono", monospace; color: var(--muted); }
+.withdraw-summary-row + .withdraw-summary-row { border-top: 1px solid var(--line); }
+.withdraw-summary-row b { color: var(--ink); font-weight: 500; }
+.withdraw-summary-row code { color: var(--ink); font: 500 11px "DM Mono", monospace; word-break: break-all; max-width: 68%; text-align: right; }
+.withdraw-summary-note { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line); color: #a54a45; font-size: 11px; line-height: 1.55; }
+.withdraw-summary-note em { font-style: normal; font-weight: 700; }
+.withdraw-summary.withdraw-warn { border-color: #d6ada7; background: #f6ecea; }
+.withdraw-summary.withdraw-warn strong { display: block; color: #a54a45; font-size: 12px; margin-bottom: 4px; }
+.withdraw-summary.withdraw-warn span { color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+/* Hard-locked withdraw destination. Rendered like the bridge modal's destination lock so the
+   visual language for "this address cannot be changed" is consistent. */
+.destination-lock { margin: 16px 0 4px; padding: 12px 14px; background: #edf0e9; border: 1px solid #d0d6c9; }
+.destination-lock span { display: block; font: 500 9px "DM Mono", monospace; color: var(--muted); letter-spacing: 1.2px; margin-bottom: 6px; }
+.destination-lock code { display: block; font: 500 11px "DM Mono", monospace; color: var(--ink); word-break: break-all; }
 .fee-note { margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); }
 .link-button { background: none; border: none; padding: 0; font: inherit; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .link-button:disabled { color: var(--muted); cursor: default; text-decoration: none; }
